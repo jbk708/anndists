@@ -7,6 +7,10 @@ pub use traits::Distance;
 // Utilities
 pub mod utils;
 
+// Basic distances
+pub mod basic;
+pub use basic::*;
+
 pub mod distances;
 pub use distances::*;
 /// std simd distances
