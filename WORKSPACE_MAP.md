@@ -15,28 +15,28 @@ The crate implements various distance metrics with SIMD optimizations for perfor
 
 ```
 anndists/
-??? src/                    # Main source code directory
-?   ??? lib.rs             # Library entry point, logger initialization
-?   ??? prelude.rs         # Public API exports
-?   ??? dist/              # Distance implementations module
-?       ??? mod.rs         # Module declarations and re-exports
-?       ??? distances.rs   # Main distance trait and implementations (L1, L2, Cosine, etc.)
-?       ??? disteez.rs     # SIMD implementations using simdeez crate (x86_64)
-?       ??? distsimd.rs    # SIMD implementations using std::simd (nightly)
-??? examples/               # Example code
-?   ??? test_unifrac_files.rs
-??? data/                   # Test data files
-?   ??? Mouse_gut_embedded.csv
-?   ??? Mouse_gut_zotu_aligned.tre
-?   ??? Mouse_gut_zotu_counts.txt
-?   ??? test_OTU_table.txt
-?   ??? test_truth.txt
-?   ??? test.nwk
-??? ExternC_UniFrac/        # External C library for UniFrac
-?   ??? libunifrac.so
-??? Cargo.toml              # Rust project configuration
-??? build.rs                # Build script
-??? README.md               # Project documentation
+  src/                    # Main source code directory
+    lib.rs             # Library entry point, logger initialization
+    prelude.rs         # Public API exports
+    dist/              # Distance implementations module
+      mod.rs         # Module declarations and re-exports
+      distances.rs   # Main distance trait and implementations (L1, L2, Cosine, etc.)
+      disteez.rs     # SIMD implementations using simdeez crate (x86_64)
+      distsimd.rs    # SIMD implementations using std::simd (nightly)
+  examples/               # Example code
+    test_unifrac_files.rs
+  data/                   # Test data files
+    Mouse_gut_embedded.csv
+    Mouse_gut_zotu_aligned.tre
+    Mouse_gut_zotu_counts.txt
+    test_OTU_table.txt
+    test_truth.txt
+    test.nwk
+  ExternC_UniFrac/        # External C library for UniFrac
+    libunifrac.so
+  Cargo.toml              # Rust project configuration
+  build.rs                # Build script
+  README.md               # Project documentation
 ```
 
 ## Core Architecture
