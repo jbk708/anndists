@@ -5,8 +5,8 @@
 - **Original Size**: ~3,935 lines total
   - Implementation code: ~1,910 lines
   - Test code: ~2,025 lines (lines 1911-3935)
-- **Current Structure**: Partially refactored - core components and basic distances extracted
-- **Remaining in distances.rs**: ~3,700 lines (probability, set, string, unifrac, custom distances + tests)
+- **Current Structure**: Mostly refactored - 7 modules extracted, only UniFrac remains
+- **Remaining in distances.rs**: ~2,000+ lines (UniFrac implementations + tests)
 
 ## Progress Status
 
@@ -26,16 +26,32 @@
    - Contains: `DistL1`, `DistL2`, `DistCosine`, `DistDot` with all implementations and macros
    - Commits: `a9c95d8`
 
+4. **`src/dist/probability.rs`** ✅
+   - Status: Complete and tested
+   - Contains: `DistHellinger`, `DistJeffreys`, `DistJensenShannon` with all implementations and macros
+   - Commits: `080dbb9`
+
+5. **`src/dist/set.rs`** ✅
+   - Status: Complete and tested
+   - Contains: `DistHamming`, `DistJaccard` with all implementations and macros
+   - Commits: `86b99ab`
+
+6. **`src/dist/string.rs`** ✅
+   - Status: Complete and tested
+   - Contains: `DistLevenshtein` implementation
+   - Commits: `b0ec1fd`
+
+7. **`src/dist/custom.rs`** ✅
+   - Status: Complete and tested
+   - Contains: `NoDist`, `DistFn`, `DistPtr`, `DistCFFI`, `DistCFnPtr` type alias
+   - Commits: `d532425`
+
 ### 🔄 In Progress
 - None currently
 
 ### ⏳ Remaining Modules
-4. `src/dist/probability.rs` - Hellinger, Jeffreys, Jensen-Shannon
-5. `src/dist/set.rs` - Hamming, Jaccard
-6. `src/dist/string.rs` - Levenshtein
-7. `src/dist/custom.rs` - NoDist, DistFn, DistPtr, DistCFFI
 8. `src/dist/unifrac.rs` - All UniFrac implementations (largest module)
-9. Final cleanup - Remove old `distances.rs` file
+9. Final cleanup - Remove old `distances.rs` file and verify everything works
 
 ## Proposed Module Structure
 
@@ -72,7 +88,7 @@
 
 ---
 
-### 3. `src/dist/probability.rs` (~200 lines)
+### 3. `src/dist/probability.rs` (~200 lines) ✅ COMPLETE
 **Purpose**: Probability distribution distances
 
 **Contents**:
@@ -80,42 +96,43 @@
 - `DistJeffreys` struct and implementations
 - `DistJensenShannon` struct and implementations
 - Macros: `implementHellingerDistance!`, `implementJeffreysDistance!`, `implementDistJensenShannon!`
+- Constant: `M_MIN` for Jeffreys distance
 
 **Dependencies**:
-- `trait.rs`
+- `traits.rs` (for `Distance` trait)
 - `disteez.rs` (for SIMD implementations)
 
-**Line ranges**: ~339-492
+**Status**: ✅ Extracted and tested. All probability distance implementations moved successfully.
 
 ---
 
-### 4. `src/dist/set.rs` (~200 lines)
+### 4. `src/dist/set.rs` (~200 lines) ✅ COMPLETE
 **Purpose**: Set-based distance metrics
 
 **Contents**:
-- `DistHamming` struct and implementations
-- `DistJaccard` struct and implementations
+- `DistHamming` struct and implementations (for multiple types: u8, u16, u32, u64, i16, i32, f32, f64)
+- `DistJaccard` struct and implementations (for u8, u16, u32)
 - Macros: `implementHammingDistance!`, `implementJaccardDistance!`
 
 **Dependencies**:
-- `trait.rs`
+- `traits.rs` (for `Distance` trait)
 - `distsimd.rs` (for SIMD implementations)
 - `disteez.rs` (for SIMD implementations)
 
-**Line ranges**: ~492-647
+**Status**: ✅ Extracted and tested. All set distance implementations moved successfully.
 
 ---
 
-### 5. `src/dist/string.rs` (~60 lines)
+### 5. `src/dist/string.rs` (~60 lines) ✅ COMPLETE
 **Purpose**: String distance metrics
 
 **Contents**:
-- `DistLevenshtein` struct and implementation
+- `DistLevenshtein` struct and implementation (for u16)
 
 **Dependencies**:
-- `trait.rs`
+- `traits.rs` (for `Distance` trait)
 
-**Line ranges**: ~647-700
+**Status**: ✅ Extracted and tested. Levenshtein distance implementation moved successfully.
 
 ---
 
@@ -159,7 +176,7 @@
 
 ---
 
-### 7. `src/dist/custom.rs` (~150 lines)
+### 7. `src/dist/custom.rs` (~150 lines) ✅ COMPLETE
 **Purpose**: Custom distance wrappers and adapters
 
 **Contents**:
@@ -170,10 +187,11 @@
 - `DistCFnPtr<T>` type alias
 
 **Dependencies**:
-- `trait.rs`
+- `traits.rs` (for `Distance` trait)
 - `num_traits::Float` (for `DistPtr`)
+- `std::os::raw::c_ulonglong` (for C FFI)
 
-**Line ranges**: ~86-98, ~1620-1909
+**Status**: ✅ Extracted and tested. All custom distance implementations moved successfully.
 
 ---
 
@@ -217,6 +235,22 @@ pub mod utils;
 // Basic distances
 pub mod basic;
 pub use basic::*;
+
+// Probability distances
+pub mod probability;
+pub use probability::*;
+
+// Set distances
+pub mod set;
+pub use set::*;
+
+// String distances
+pub mod string;
+pub use string::*;
+
+// Custom distances
+pub mod custom;
+pub use custom::*;
 
 pub mod distances;
 pub use distances::*;
@@ -276,15 +310,16 @@ pub use utils::*;
 3. ✅ Update imports in `distances.rs`
 4. ✅ All tests pass
 
-### 🔄 Phase 3: Extract Specialized Distances - IN PROGRESS
-1. ⏳ Create `probability.rs` (Hellinger, Jeffreys, Jensen-Shannon)
-2. ⏳ Create `set.rs` (Hamming, Jaccard)
-3. ⏳ Create `string.rs` (Levenshtein)
-4. ⏳ Update imports
+### ✅ Phase 3: Extract Specialized Distances - COMPLETE
+1. ✅ Create `probability.rs` (Hellinger, Jeffreys, Jensen-Shannon)
+2. ✅ Create `set.rs` (Hamming, Jaccard)
+3. ✅ Create `string.rs` (Levenshtein)
+4. ✅ Update imports and remove duplicate code
+5. ✅ All tests pass
 
-### ⏳ Phase 4: Extract Complex Modules - PENDING
-1. ⏳ Create `custom.rs` (NoDist, DistFn, DistPtr, DistCFFI)
-2. ⏳ Create `unifrac.rs` (largest, most complex)
+### ✅ Phase 4: Extract Complex Modules - MOSTLY COMPLETE
+1. ✅ Create `custom.rs` (NoDist, DistFn, DistPtr, DistCFFI)
+2. ⏳ Create `unifrac.rs` (largest, most complex) - **NEXT**
 3. ⏳ Move all remaining implementations
 
 ### ⏳ Phase 5: Cleanup - PENDING
@@ -302,13 +337,13 @@ pub use utils::*;
 |--------|----------------|------------|--------|
 | `traits.rs` | ~50 | Low | ✅ Complete |
 | `basic.rs` | ~400 | Medium | ✅ Complete |
-| `probability.rs` | ~200 | Medium | ⏳ Pending |
-| `set.rs` | ~200 | Medium | ⏳ Pending |
-| `string.rs` | ~60 | Low | ⏳ Pending |
+| `probability.rs` | ~200 | Medium | ✅ Complete |
+| `set.rs` | ~200 | Medium | ✅ Complete |
+| `string.rs` | ~60 | Low | ✅ Complete |
 | `unifrac.rs` | ~1,200 | High | ⏳ Pending |
-| `custom.rs` | ~150 | Low | ⏳ Pending |
+| `custom.rs` | ~150 | Low | ✅ Complete |
 | `utils.rs` | ~50 | Low | ✅ Complete |
-| **Total** | **~2,310** | | **3/8 Complete** |
+| **Total** | **~2,310** | | **7/8 Complete** |
 
 *Note: Some reduction expected due to shared imports and better organization*
 
@@ -316,6 +351,10 @@ pub use utils::*;
 - `traits.rs`: ~35 lines
 - `utils.rs`: ~30 lines  
 - `basic.rs`: ~350 lines
+- `probability.rs`: ~167 lines
+- `set.rs`: ~163 lines
+- `string.rs`: ~58 lines
+- `custom.rs`: ~114 lines
 
 ---
 
@@ -355,14 +394,16 @@ pub use utils::*;
 
 ## Considerations
 
-1. **Circular Dependencies**: ✅ No issues encountered so far. Ensure proper module organization to avoid cycles
+1. **Circular Dependencies**: ✅ No issues encountered. Proper module organization maintained
 2. **Public API**: ✅ Backward compatibility maintained - all types accessible via `dist::*` through re-exports
-3. **Tests**: ⏳ Currently all tests remain in `distances.rs`. Will move to respective modules (recommended) or keep in integration tests
-4. **SIMD Dependencies**: ✅ Feature gates working correctly - `basic.rs` successfully uses conditional SIMD compilation
-5. **UniFrac Complexity**: ⏳ Consider further splitting `unifrac.rs` if it remains too large
-6. **Test Migration**: ⏳ Tests will need to be split and moved alongside their implementations
+3. **Tests**: ✅ Tests still in `distances.rs` but working correctly. Can move to respective modules later (optional)
+4. **SIMD Dependencies**: ✅ Feature gates working correctly - all modules successfully use conditional SIMD compilation
+5. **UniFrac Complexity**: ⏳ Next module to extract. Consider further splitting if it remains too large (~1,200 lines)
+6. **Test Migration**: ⏳ Tests currently work from `distances.rs` with imports. Can migrate later for better organization
 7. **Rust Keywords**: ✅ Note that `trait` is a Rust keyword, so module was named `traits.rs` instead
 8. **Import Organization**: ✅ Using `use super::module::*` pattern for internal imports works well
+9. **Duplicate Code Removal**: ✅ Successfully removed duplicate implementations from `distances.rs` after extraction
+10. **Test Imports**: ✅ Added necessary imports in test module (e.g., `use super::super::set::{DistHamming, DistJaccard}`)
 
 ---
 
