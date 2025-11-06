@@ -27,6 +27,10 @@ pub use string::*;
 pub mod custom;
 pub use custom::*;
 
+// UniFrac distances
+pub mod unifrac;
+pub use unifrac::*;
+
 pub mod distances;
 pub use distances::*;
 /// std simd distances
