@@ -11,15 +11,21 @@ This directory contains utility scripts and examples for the anndists crate.
 
 ## Usage
 
-These scripts are not configured as Cargo binaries. To run them:
+These scripts are not configured as Cargo binaries. They reference data files using relative paths (`../data/`), so they should be run from the project root directory.
+
+To compile and run them manually:
 
 ```bash
 # From the project root
-rustc utilities/check_data.rs --edition 2021 --extern anndists=target/debug/libanndists.rlib && ./check_data
-
-# Or compile and run manually
 cd utilities
-rustc check_data.rs --edition 2021 -L ../target/debug/deps && ./check_data
+rustc check_data.rs --edition 2021 -L ../target/debug/deps --extern anndists=../target/debug/libanndists.rlib && ./check_data
 ```
 
-Note: These scripts reference data files using relative paths (`../data/`), so they should be run from the project root or the utilities directory depending on the path structure.
+Or, if you want to run from the project root:
+
+```bash
+# From the project root
+rustc utilities/check_data.rs --edition 2021 -L target/debug/deps --extern anndists=target/debug/libanndists.rlib -o utilities/check_data && utilities/check_data
+```
+
+**Note**: These are utility scripts for development/debugging purposes. For production use, prefer the examples in the `examples/` directory which are properly configured as Cargo examples.
