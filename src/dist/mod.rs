@@ -4,6 +4,9 @@
 pub mod traits;
 pub use traits::Distance;
 
+// Utilities
+pub mod utils;
+
 pub mod distances;
 pub use distances::*;
 /// std simd distances

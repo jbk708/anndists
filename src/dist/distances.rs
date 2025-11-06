@@ -323,14 +323,8 @@ impl Distance<f32> for DistDot {
     } // end of eval
 }
 
-pub fn l2_normalize(va: &mut [f32]) {
-    let l2norm = va.iter().map(|t| (*t * *t) as f32).sum::<f32>().sqrt();
-    if l2norm > 0. {
-        for i in 0..va.len() {
-            va[i] = va[i] / l2norm;
-        }
-    }
-}
+// Import utility functions from utils module
+use super::utils::l2_normalize;
 
 //=======================================================================================
 
