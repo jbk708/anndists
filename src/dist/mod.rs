@@ -11,6 +11,10 @@ pub mod utils;
 pub mod basic;
 pub use basic::*;
 
+// Probability distances
+pub mod probability;
+pub use probability::*;
+
 pub mod distances;
 pub use distances::*;
 /// std simd distances
