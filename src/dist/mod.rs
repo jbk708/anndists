@@ -23,6 +23,10 @@ pub use set::*;
 pub mod string;
 pub use string::*;
 
+// Custom distances
+pub mod custom;
+pub use custom::*;
+
 pub mod distances;
 pub use distances::*;
 /// std simd distances
