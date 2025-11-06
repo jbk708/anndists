@@ -31,8 +31,9 @@ pub use custom::*;
 pub mod unifrac;
 pub use unifrac::*;
 
+// Test module (only compiled in test mode)
+#[cfg(test)]
 pub mod distances;
-pub use distances::*;
 /// std simd distances
 pub(crate) mod distsimd;
 

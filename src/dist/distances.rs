@@ -1,97 +1,15 @@
-//! Some standard distances as L1, L2, Cosine, Jaccard, Hamming
-//! and a structure to enable the user to implement its own distances.
-//! For the heavily used case (f32) we provide simd avx2 and std::simd implementations.
+//! Test module for distance implementations.
+//! 
+//! This module contains comprehensive tests for all distance implementations
+//! that have been refactored into separate modules (basic, probability, set,
+//! string, custom, unifrac).
 
-#[cfg(feature = "stdsimd")]
-use super::distsimd::*;
-
-#[cfg(feature = "simdeez_f")]
-use super::disteez::*;
-#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-use std::arch::x86_64::*;
-/// The trait describing distance.
-/// For example for the L1 distance
-///
-/// pub struct DistL1;
-///
-/// implement Distance<f32> for DistL1 {
-/// }
-///
-///
-/// The L1 and Cosine distance are implemented for u16, i32, i64, f32, f64
-///
-///
-use std::os::raw::c_ulonglong;
-
-use num_traits::float::*;
-
-/// for DistUniFrac (original implementation only)
-use anyhow::{anyhow, Result};
-use log::debug;
-use phylotree::tree::Tree;
-use std::collections::HashMap;
-
-// for BitVec used in NewDistUniFrac
-use bitvec::prelude::*;
-use newick::{one_from_string, NewickTree};
-use succparen::{
-    bitwise::SparseOneNnd,
-    tree::{
-        balanced_parens::{BalancedParensTree, Node as BpNode},
-        traversal::{DepthFirstTraverse, VisitNode},
-        LabelVec, Node,
-    },
-};
-
-/// for DistCFnPtr_UniFrac
-use std::os::raw::{c_char, c_double, c_uint};
-use std::slice;
-
-#[allow(unused)]
-enum DistKind {
-    DistL1(String),
-    DistL2(String),
-    /// This is the same as Cosine dist but all data L2-normalized to 1.
-    DistDot(String),
-    DistCosine(String),
-    DistHamming(String),
-    DistJaccard(String),
-    DistHellinger(String),
-    DistJeffreys(String),
-    DistJensenShannon(String),
-    /// UniFrac distance
-    DistUniFrac(String),
-    /// New UniFrac distance using succparen for high performance
-    NewDistUniFrac(String),
-    /// To store a distance defined by a C pointer function
-    DistCFnPtr,
-    /// To store a distance defined by a UniFrac C pointer function, see here: https://github.com/sfiligoi/unifrac-binaries/tree/simple1_250107
-    DistUniFracCFFI(String),
-    /// Distance defined by a closure
-    DistFn,
-    /// Distance defined by a fn Rust pointer
-    DistPtr,
-    DistLevenshtein(String),
-    /// used only with reloading only graph data from a previous dump
-    DistNoDist(String),
-}
-
-// Import the Distance trait from the traits module
-use super::traits::Distance;
-
-// Import custom distances from custom module
-use super::custom::*;
-
-// Import basic distances from basic module
+// Import all distance implementations for testing
 use super::basic::*;
-
-// Import probability distances from probability module
 use super::probability::*;
-
-// Import string distances from string module
+use super::set::*;
 use super::string::*;
-
-// Import UniFrac distances from unifrac module
+use super::custom::*;
 use super::unifrac::*;
 
 // Import utility functions from utils module
@@ -102,10 +20,12 @@ use super::utils::l2_normalize;
 #[cfg(test)]
 mod tests {
     use super::*;
+    use super::super::traits::Distance;
     use super::super::set::{DistHamming, DistJaccard};
     use env_logger::Env;
     use log::debug;
     use std::ffi::CString;
+    use std::os::raw::{c_char, c_ulonglong};
     use std::ptr;
 
     fn init_log() -> u64 {
