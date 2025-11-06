@@ -15,6 +15,10 @@ pub use basic::*;
 pub mod probability;
 pub use probability::*;
 
+// Set distances
+pub mod set;
+pub use set::*;
+
 pub mod distances;
 pub use distances::*;
 /// std simd distances
