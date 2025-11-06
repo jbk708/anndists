@@ -1,28 +1,58 @@
 # Refactoring Plan: Breaking up `distances.rs`
 
 ## Current State
-- **File**: `src/dist/distances.rs`
-- **Size**: ~3,935 lines total
+- **Original File**: `src/dist/distances.rs`
+- **Original Size**: ~3,935 lines total
   - Implementation code: ~1,910 lines
   - Test code: ~2,025 lines (lines 1911-3935)
-- **Structure**: Single monolithic file containing all distance implementations and tests
+- **Current Structure**: Partially refactored - core components and basic distances extracted
+- **Remaining in distances.rs**: ~3,700 lines (probability, set, string, unifrac, custom distances + tests)
+
+## Progress Status
+
+### ✅ Completed Modules
+1. **`src/dist/traits.rs`** ✅ (renamed from `trait.rs` - `trait` is a Rust keyword)
+   - Status: Complete and tested
+   - Contains: `Distance<T>` trait definition
+   - Commits: `354b9b5`
+
+2. **`src/dist/utils.rs`** ✅
+   - Status: Complete and tested
+   - Contains: `l2_normalize()` function
+   - Commits: `798ae91`
+
+3. **`src/dist/basic.rs`** ✅
+   - Status: Complete and tested
+   - Contains: `DistL1`, `DistL2`, `DistCosine`, `DistDot` with all implementations and macros
+   - Commits: `a9c95d8`
+
+### 🔄 In Progress
+- None currently
+
+### ⏳ Remaining Modules
+4. `src/dist/probability.rs` - Hellinger, Jeffreys, Jensen-Shannon
+5. `src/dist/set.rs` - Hamming, Jaccard
+6. `src/dist/string.rs` - Levenshtein
+7. `src/dist/custom.rs` - NoDist, DistFn, DistPtr, DistCFFI
+8. `src/dist/unifrac.rs` - All UniFrac implementations (largest module)
+9. Final cleanup - Remove old `distances.rs` file
 
 ## Proposed Module Structure
 
-### 1. `src/dist/trait.rs` (~50 lines)
+### 1. `src/dist/traits.rs` (~50 lines) ✅ COMPLETE
 **Purpose**: Core trait definition and common types
 
 **Contents**:
 - `Distance<T>` trait definition
-- `DistKind` enum (if still needed)
-- Common imports and type aliases
 - Documentation for the trait
 
 **Dependencies**: None (foundation)
 
+**Status**: ✅ Extracted and tested. Note: Renamed from `trait.rs` to `traits.rs` because `trait` is a Rust keyword.
+
 ---
 
-### 2. `src/dist/basic.rs` (~400 lines)
+### 2. `src/dist/basic.rs` (~400 lines) ✅ COMPLETE
 **Purpose**: Basic vector distance metrics (L1, L2, Cosine, Dot)
 
 **Contents**:
@@ -34,11 +64,11 @@
 - Helper functions: `scalar_l2_f32()`, `scalar_dot_f32()`
 
 **Dependencies**:
-- `trait.rs` (for `Distance` trait)
+- `traits.rs` (for `Distance` trait)
 - `distsimd.rs` (for SIMD implementations)
 - `disteez.rs` (for SIMD implementations)
 
-**Line ranges**: ~99-339
+**Status**: ✅ Extracted and tested. All basic distance implementations moved successfully.
 
 ---
 
@@ -147,16 +177,16 @@
 
 ---
 
-### 8. `src/dist/utils.rs` (~50 lines)
+### 8. `src/dist/utils.rs` (~50 lines) ✅ COMPLETE
 **Purpose**: Utility functions used across distance implementations
 
 **Contents**:
 - `l2_normalize()` function
-- Other shared utility functions
+- Other shared utility functions (if any)
 
 **Dependencies**: None (or minimal)
 
-**Line ranges**: ~330
+**Status**: ✅ Extracted and tested. `l2_normalize()` function moved successfully.
 
 ---
 
@@ -173,12 +203,40 @@
 
 ## Updated `src/dist/mod.rs` Structure
 
+**Current State** (as of latest commit):
+```rust
+//! module for distance implementation
+
+// Core trait
+pub mod traits;
+pub use traits::Distance;
+
+// Utilities
+pub mod utils;
+
+// Basic distances
+pub mod basic;
+pub use basic::*;
+
+pub mod distances;
+pub use distances::*;
+/// std simd distances
+pub(crate) mod distsimd;
+
+// simdeez distance implementation
+pub(crate) mod disteez;
+```
+
+**Target Structure** (when complete):
 ```rust
 //! Distance implementations module
 
 // Core trait
-pub mod trait;
-pub use trait::Distance;
+pub mod traits;
+pub use traits::Distance;
+
+// Utilities
+pub mod utils;
 
 // Distance implementations
 pub mod basic;
@@ -187,9 +245,6 @@ pub mod set;
 pub mod string;
 pub mod unifrac;
 pub mod custom;
-
-// Utilities
-pub mod utils;
 
 // SIMD implementations (existing)
 pub(crate) mod distsimd;
@@ -209,50 +264,58 @@ pub use utils::*;
 
 ## Migration Strategy
 
-### Phase 1: Extract Core Components
-1. Create `trait.rs` with `Distance` trait
-2. Create `utils.rs` with utility functions
-3. Update `mod.rs` to include new modules
+### ✅ Phase 1: Extract Core Components - COMPLETE
+1. ✅ Create `traits.rs` with `Distance` trait (renamed from `trait.rs`)
+2. ✅ Create `utils.rs` with utility functions
+3. ✅ Update `mod.rs` to include new modules
+4. ✅ Update `prelude.rs` to use re-exported trait
 
-### Phase 2: Extract Basic Distances
-1. Create `basic.rs` with L1, L2, Cosine, Dot
-2. Move macros and implementations
-3. Update imports in `distances.rs` temporarily
+### ✅ Phase 2: Extract Basic Distances - COMPLETE
+1. ✅ Create `basic.rs` with L1, L2, Cosine, Dot
+2. ✅ Move macros and implementations
+3. ✅ Update imports in `distances.rs`
+4. ✅ All tests pass
 
-### Phase 3: Extract Specialized Distances
-1. Create `probability.rs`
-2. Create `set.rs`
-3. Create `string.rs`
-4. Update imports
+### 🔄 Phase 3: Extract Specialized Distances - IN PROGRESS
+1. ⏳ Create `probability.rs` (Hellinger, Jeffreys, Jensen-Shannon)
+2. ⏳ Create `set.rs` (Hamming, Jaccard)
+3. ⏳ Create `string.rs` (Levenshtein)
+4. ⏳ Update imports
 
-### Phase 4: Extract Complex Modules
-1. Create `unifrac.rs` (largest, most complex)
-2. Create `custom.rs`
-3. Move all remaining implementations
+### ⏳ Phase 4: Extract Complex Modules - PENDING
+1. ⏳ Create `custom.rs` (NoDist, DistFn, DistPtr, DistCFFI)
+2. ⏳ Create `unifrac.rs` (largest, most complex)
+3. ⏳ Move all remaining implementations
 
-### Phase 5: Cleanup
-1. Remove old `distances.rs` file
-2. Update all internal imports
-3. Verify tests still pass
-4. Update documentation
+### ⏳ Phase 5: Cleanup - PENDING
+1. ⏳ Remove old `distances.rs` file
+2. ⏳ Update all internal imports
+3. ⏳ Verify tests still pass
+4. ⏳ Update documentation
+5. ⏳ Split tests into respective modules (optional)
 
 ---
 
 ## File Size Estimates
 
-| Module | Estimated Lines | Complexity |
-|--------|----------------|------------|
-| `trait.rs` | ~50 | Low |
-| `basic.rs` | ~400 | Medium |
-| `probability.rs` | ~200 | Medium |
-| `set.rs` | ~200 | Medium |
-| `string.rs` | ~60 | Low |
-| `unifrac.rs` | ~1,200 | High |
-| `custom.rs` | ~150 | Low |
-| `utils.rs` | ~50 | Low |
-| **Total** | **~2,310** | |
+| Module | Estimated Lines | Complexity | Status |
+|--------|----------------|------------|--------|
+| `traits.rs` | ~50 | Low | ✅ Complete |
+| `basic.rs` | ~400 | Medium | ✅ Complete |
+| `probability.rs` | ~200 | Medium | ⏳ Pending |
+| `set.rs` | ~200 | Medium | ⏳ Pending |
+| `string.rs` | ~60 | Low | ⏳ Pending |
+| `unifrac.rs` | ~1,200 | High | ⏳ Pending |
+| `custom.rs` | ~150 | Low | ⏳ Pending |
+| `utils.rs` | ~50 | Low | ✅ Complete |
+| **Total** | **~2,310** | | **3/8 Complete** |
 
 *Note: Some reduction expected due to shared imports and better organization*
+
+**Actual Sizes** (as extracted):
+- `traits.rs`: ~35 lines
+- `utils.rs`: ~30 lines  
+- `basic.rs`: ~350 lines
 
 ---
 
@@ -292,12 +355,14 @@ pub use utils::*;
 
 ## Considerations
 
-1. **Circular Dependencies**: Ensure proper module organization to avoid cycles
-2. **Public API**: Maintain backward compatibility - all types should still be accessible via `dist::*`
-3. **Tests**: Move tests to respective modules (recommended) or keep in integration tests
-4. **SIMD Dependencies**: Some modules depend on `distsimd.rs` and `disteez.rs` - ensure feature gates work correctly
-5. **UniFrac Complexity**: Consider further splitting `unifrac.rs` if it remains too large
-6. **Test Migration**: Tests will need to be split and moved alongside their implementations
+1. **Circular Dependencies**: ✅ No issues encountered so far. Ensure proper module organization to avoid cycles
+2. **Public API**: ✅ Backward compatibility maintained - all types accessible via `dist::*` through re-exports
+3. **Tests**: ⏳ Currently all tests remain in `distances.rs`. Will move to respective modules (recommended) or keep in integration tests
+4. **SIMD Dependencies**: ✅ Feature gates working correctly - `basic.rs` successfully uses conditional SIMD compilation
+5. **UniFrac Complexity**: ⏳ Consider further splitting `unifrac.rs` if it remains too large
+6. **Test Migration**: ⏳ Tests will need to be split and moved alongside their implementations
+7. **Rust Keywords**: ✅ Note that `trait` is a Rust keyword, so module was named `traits.rs` instead
+8. **Import Organization**: ✅ Using `use super::module::*` pattern for internal imports works well
 
 ---
 
