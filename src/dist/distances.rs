@@ -76,12 +76,8 @@ enum DistKind {
     DistNoDist(String),
 }
 
-/// This is the basic Trait describing a distance. The structure Hnsw can be instantiated by anything
-/// satisfying this Trait. The crate provides implmentations for L1, L2 , Cosine, Jaccard, Hamming.
-/// For other distances implement the trait possibly with the newtype pattern
-pub trait Distance<T: Send + Sync> {
-    fn eval(&self, va: &[T], vb: &[T]) -> f32;
-}
+// Import the Distance trait from the traits module
+use super::traits::Distance;
 
 /// Special forbidden computation distance. It is associated to a unit NoData structure
 /// This is a special structure used when we want to only reload the graph from a previous computation
