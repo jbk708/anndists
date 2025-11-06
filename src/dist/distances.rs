@@ -7,6 +7,7 @@ use super::distsimd::*;
 
 #[cfg(feature = "simdeez_f")]
 use super::disteez::*;
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 use std::arch::x86_64::*;
 /// The trait describing distance.
 /// For example for the L1 distance
@@ -26,22 +27,21 @@ use num_traits::float::*;
 
 /// for DistUniFrac (original implementation only)
 use anyhow::{anyhow, Result};
+use log::debug;
 use phylotree::tree::Tree;
 use std::collections::HashMap;
-use log::debug;
 
 // for BitVec used in NewDistUniFrac
 use bitvec::prelude::*;
-use newick::{one_from_string, Newick, NewickTree};
+use newick::{one_from_string, NewickTree};
 use succparen::{
     bitwise::SparseOneNnd,
     tree::{
         balanced_parens::{BalancedParensTree, Node as BpNode},
         traversal::{DepthFirstTraverse, VisitNode},
-        LabelVec, Node, Labels,
+        LabelVec, Node,
     },
 };
-
 
 /// for DistCFnPtr_UniFrac
 use std::os::raw::{c_char, c_double, c_uint};
@@ -59,7 +59,7 @@ enum DistKind {
     DistHellinger(String),
     DistJeffreys(String),
     DistJensenShannon(String),
-    /// UniFrac distance 
+    /// UniFrac distance
     DistUniFrac(String),
     /// New UniFrac distance using succparen for high performance
     NewDistUniFrac(String),
@@ -189,21 +189,24 @@ impl Distance<f32> for DistL2 {
         //
         cfg_if::cfg_if! {
             if #[cfg(feature = "simdeez_f")] {
-            #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-            {
-                if is_x86_feature_detected!("avx2") {
-                    return unsafe { distance_l2_f32_avx2(va, vb) };
+                #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+                {
+                    if is_x86_feature_detected!("avx2") {
+                        return unsafe { distance_l2_f32_avx2(va, vb) };
+                    }
+                    else {
+                        return scalar_l2_f32(&va, &vb);
+                    }
                 }
-                else {
+                #[cfg(not(any(target_arch = "x86", target_arch = "x86_64")))]
+                {
                     return scalar_l2_f32(&va, &vb);
                 }
-            }
             } else if #[cfg(feature = "stdsimd")] {
                 return distance_l2_f32_simd(va, vb);
             }
             else {
-                let norm = scalar_l2_f32(&va, &vb);
-                return norm;
+                return scalar_l2_f32(&va, &vb);
             }
         }
     } // end of eval
@@ -310,6 +313,10 @@ impl Distance<f32> for DistDot {
                         return scalar_dot_f32(va, vb);
                     }
                 } // end x86
+                #[cfg(not(any(target_arch = "x86", target_arch = "x86_64")))]
+                {
+                    return scalar_dot_f32(va, vb);
+                }
             } else if #[cfg(feature = "stdsimd")] {
                 return distance_dot_f32_simd_iter(va,vb);
             }
@@ -379,7 +386,7 @@ impl Distance<f32> for DistHellinger {
             .iter()
             .zip(vb.iter())
             .map(|t| ((*t.0).sqrt() * (*t.1).sqrt()) as f32)
-            .fold(0., |acc, t| (acc + t));
+            .fold(0., |acc, t| acc + t);
         // if too far away from >= panic else reset!
         assert!(1. - dist >= -0.000001);
         dist = (1. - dist).max(0.).sqrt();
@@ -441,7 +448,7 @@ impl Distance<f32> for DistJeffreys {
             .iter()
             .zip(vb.iter())
             .map(|t| (*t.0 - *t.1) * ((*t.0).max(M_MIN) / (*t.1).max(M_MIN)).ln() as f32)
-            .fold(0., |acc, t| (acc + t));
+            .fold(0., |acc, t| acc + t);
         dist
     } // end of eval
 }
@@ -449,7 +456,7 @@ impl Distance<f32> for DistJeffreys {
 //=======================================================================================
 
 /// Jensen-Shannon distance.  
-/// It is defined as the **square root** of the  Jensen–Shannon divergence and is a metric.
+/// It is defined as the **square root** of the  Jensen?Shannon divergence and is a metric.
 /// Vector must be >= 0 and normalized to 1!
 /// **The distance computation does not check that**.
 #[derive(Default, Copy, Clone)]
@@ -688,7 +695,6 @@ impl Distance<u16> for DistLevenshtein {
     }
 }
 
-
 /// DistUniFrac
 #[derive(Default, Clone)]
 pub struct DistUniFrac {
@@ -715,11 +721,7 @@ impl DistUniFrac {
     /// a boolean `weighted` for Weighted or Unweighted, plus your feature names.
     ///
     /// *Important*: We do not compress or re-root the tree. This ensures T4's path
-    pub fn new(
-        newick_str: &str,
-        weighted: bool,
-        feature_names: Vec<String>,
-    ) -> Result<Self> {
+    pub fn new(newick_str: &str, weighted: bool, feature_names: Vec<String>) -> Result<Self> {
         // Parse the tree from the Newick string
         let tree = Tree::from_newick(newick_str)?;
 
@@ -779,7 +781,7 @@ impl Distance<f32> for DistUniFrac {
 //--------------------------------------------------------------------------------------//
 fn build_tint_lint(tree: &Tree) -> Result<(Vec<usize>, Vec<f32>, Vec<usize>, Vec<Option<String>>)> {
     let root = tree.get_root().map_err(|_| anyhow!("Tree has no root"))?;
-    let postord = tree.postorder(&root)?; 
+    let postord = tree.postorder(&root)?;
     debug!("postord = {:?}", postord);
     let num_nodes = postord.len();
 
@@ -805,7 +807,9 @@ fn build_tint_lint(tree: &Tree) -> Result<(Vec<usize>, Vec<f32>, Vec<usize>, Vec
             node_name_map[pos_map[nid]] = Some(name.clone());
         }
         if nid != root {
-            let p = node.parent.ok_or_else(|| anyhow!("Node has no parent but is not root"))?;
+            let p = node
+                .parent
+                .ok_or_else(|| anyhow!("Node has no parent but is not root"))?;
             tint[pos_map[nid]] = pos_map[p];
             lint[pos_map[nid]] = node.parent_edge.unwrap_or(0.0) as f32;
         }
@@ -815,7 +819,7 @@ fn build_tint_lint(tree: &Tree) -> Result<(Vec<usize>, Vec<f32>, Vec<usize>, Vec
 
 fn build_leaf_map(
     tree: &Tree,
-    node_name_map: &[Option<String>],
+    _node_name_map: &[Option<String>],
 ) -> Result<HashMap<String, usize>> {
     let root = tree.get_root().map_err(|_| anyhow!("Tree has no root"))?;
     let postord = tree.postorder(&root)?;
@@ -842,22 +846,22 @@ fn build_leaf_map(
 // Helper function to extract leaf names from newick string without phylotree dependency
 fn extract_leaf_names_from_newick_string(newick_str: &str) -> Result<Vec<String>> {
     let mut leaf_names = Vec::new();
-    
+
     // Method 1: Try to extract from existing tree iteration
-    let t: NewickTree = one_from_string(newick_str)
-        .map_err(|e| anyhow!("Failed to parse Newick string: {}", e))?;
-    
+    let t: NewickTree =
+        one_from_string(newick_str).map_err(|e| anyhow!("Failed to parse Newick string: {}", e))?;
+
     // Create a temporary SuccTrav to iterate through nodes
     let mut temp_lens = Vec::<f32>::new();
     let trav = SuccTrav::new(&t, &mut temp_lens);
     let bp: BalancedParensTree<LabelVec<usize>, SparseOneNnd> =
         BalancedParensTree::new_builder(trav, LabelVec::<usize>::new()).build_all();
-    
+
     let total = bp.len() + 1;
     let mut kids = vec![Vec::<usize>::new(); total];
     let mut post = Vec::<usize>::with_capacity(total);
     collect_children::<SparseOneNnd>(&bp.root(), &mut kids, &mut post);
-    
+
     // Find leaf nodes (nodes with no children)
     let mut leaf_ids = Vec::<usize>::new();
     for node_id in 0..total {
@@ -865,16 +869,19 @@ fn extract_leaf_names_from_newick_string(newick_str: &str) -> Result<Vec<String>
             leaf_ids.push(node_id);
         }
     }
-    
+
     // Method 2: Use simple pattern matching for common cases
     // This handles most newick formats including complex ones
-    let cleaned = newick_str.replace('\n', "").replace('\r', "").replace('\t', " ");
-    
+    let cleaned = newick_str
+        .replace('\n', "")
+        .replace('\r', "")
+        .replace('\t', " ");
+
     // Find leaf patterns: word followed by : (leaf with branch length) or word at end before )
     let mut current_token = String::new();
     let mut chars = cleaned.chars().peekable();
     let mut depth = 0;
-    
+
     while let Some(ch) = chars.next() {
         match ch {
             '(' => {
@@ -914,7 +921,7 @@ fn extract_leaf_names_from_newick_string(newick_str: &str) -> Result<Vec<String>
                     }
                 }
                 current_token.clear();
-                
+
                 // Skip until next delimiter
                 while let Some(&next_ch) = chars.peek() {
                     if next_ch == ',' || next_ch == ')' || next_ch == '(' {
@@ -935,12 +942,12 @@ fn extract_leaf_names_from_newick_string(newick_str: &str) -> Result<Vec<String>
             }
         }
     }
-    
+
     // Remove duplicates and empty names
     leaf_names.sort();
     leaf_names.dedup();
     leaf_names.retain(|name| !name.is_empty());
-    
+
     Ok(leaf_names)
 }
 
@@ -965,46 +972,58 @@ impl NewDistUniFrac {
             .map_err(|e| anyhow!("Failed to parse Newick string: {}", e))?;
 
         // 2. Build tree structure using succparen-compatible approach
-        // Map Newick nodes to sequential indices (postorder) for succparen compatibility  
+        // Map Newick nodes to sequential indices (postorder) for succparen compatibility
         let mut newick_to_index = HashMap::new();
         let mut index_counter = 0;
         let mut lens = Vec::<f32>::new();
-        
+
         // Assign indices in postorder (required for succparen/unifrac_bp pattern)
-        fn assign_postorder_indices(node_id: usize, tree: &NewickTree, 
-                                   mapping: &mut HashMap<usize, usize>, 
-                                   counter: &mut usize, 
-                                   lens: &mut Vec<f32>) {
+        fn assign_postorder_indices(
+            node_id: usize,
+            tree: &NewickTree,
+            mapping: &mut HashMap<usize, usize>,
+            counter: &mut usize,
+            lens: &mut Vec<f32>,
+        ) {
             // Process children first (postorder)
             for &child_id in tree[node_id].children() {
                 assign_postorder_indices(child_id, tree, mapping, counter, lens);
             }
-            
+
             // Assign index to current node
             mapping.insert(node_id, *counter);
-            
+
             // Store branch length
             if *counter >= lens.len() {
                 lens.resize(*counter + 1, 0.0);
             }
             lens[*counter] = tree[node_id].branch().copied().unwrap_or(0.0);
-            
+
             *counter += 1;
         }
-        
-        assign_postorder_indices(t.root(), &t, &mut newick_to_index, &mut index_counter, &mut lens);
+
+        assign_postorder_indices(
+            t.root(),
+            &t,
+            &mut newick_to_index,
+            &mut index_counter,
+            &mut lens,
+        );
 
         // 3. Build children arrays and postorder (succparen-compatible structure)
         let total_nodes = index_counter;
         let mut kids = vec![Vec::<usize>::new(); total_nodes];
         let mut post = Vec::<usize>::with_capacity(total_nodes);
-        
-        fn build_succparen_structure(node_id: usize, tree: &NewickTree, 
-                                    mapping: &HashMap<usize, usize>,
-                                    kids: &mut [Vec<usize>], 
-                                    post: &mut Vec<usize>) {
+
+        fn build_succparen_structure(
+            node_id: usize,
+            tree: &NewickTree,
+            mapping: &HashMap<usize, usize>,
+            kids: &mut [Vec<usize>],
+            post: &mut Vec<usize>,
+        ) {
             let current_idx = mapping[&node_id];
-            
+
             // Process children in correct order
             for &child_id in tree[node_id].children() {
                 let child_idx = mapping[&child_id];
@@ -1013,19 +1032,22 @@ impl NewDistUniFrac {
             }
             post.push(current_idx);
         }
-        
+
         build_succparen_structure(t.root(), &t, &newick_to_index, &mut kids, &mut post);
 
         // 4. Find leaf nodes using original Newick tree (correct approach)
         let mut leaf_ids = Vec::<usize>::new();
         let mut leaf_nm = Vec::<String>::new();
-        
-        fn find_leaves_recursive(node_id: usize, tree: &NewickTree, 
-                                mapping: &HashMap<usize, usize>,
-                                leaf_ids: &mut Vec<usize>, 
-                                leaf_nm: &mut Vec<String>) {
+
+        fn find_leaves_recursive(
+            node_id: usize,
+            tree: &NewickTree,
+            mapping: &HashMap<usize, usize>,
+            leaf_ids: &mut Vec<usize>,
+            leaf_nm: &mut Vec<String>,
+        ) {
             let node = &tree[node_id];
-            
+
             if node.children().is_empty() {
                 if let Some(name) = node.data().name.as_ref() {
                     if let Some(&idx) = mapping.get(&node_id) {
@@ -1039,10 +1061,10 @@ impl NewDistUniFrac {
                 }
             }
         }
-        
+
         find_leaves_recursive(t.root(), &t, &newick_to_index, &mut leaf_ids, &mut leaf_nm);
 
-        // 5. Create taxon-name → leaf-index mapping
+        // 5. Create taxon-name ? leaf-index mapping
         let t2leaf: HashMap<&str, usize> = leaf_nm
             .iter()
             .enumerate()
@@ -1083,11 +1105,11 @@ impl Distance<f32> for NewDistUniFrac {
         // Convert to bit vectors for the working unifrac_pair function
         let a_bits: BitVec<u8, bitvec::order::Lsb0> = va.iter().map(|&x| x > 0.0).collect();
         let b_bits: BitVec<u8, bitvec::order::Lsb0> = vb.iter().map(|&x| x > 0.0).collect();
-        
-        // Use the proven working unifrac_pair function 
+
+        // Use the proven working unifrac_pair function
         unifrac_pair(
             &self.post,
-            &self.kids, 
+            &self.kids,
             &self.lens,
             &self.leaf_ids,
             &a_bits,
@@ -1100,35 +1122,41 @@ impl Distance<f32> for NewDistUniFrac {
 fn unifrac_succparen_normalized(
     post: &[usize],
     kids: &[Vec<usize>],
-    lens: &[f32], 
+    lens: &[f32],
     leaf_ids: &[usize],
     va: &[f32],
     vb: &[f32],
 ) -> f64 {
     const A_BIT: u8 = 0b01;
     const B_BIT: u8 = 0b10;
-    
+
     // Create presence masks (like unifrac_pair)
     let mut mask = vec![0u8; lens.len()];
-    
+
     println!("DEBUG: Setting leaf masks:");
     for (leaf_pos, &leaf_node_id) in leaf_ids.iter().enumerate() {
         if leaf_pos < va.len() && leaf_pos < vb.len() {
             let a_val = va[leaf_pos];
             let b_val = vb[leaf_pos];
-            println!("DEBUG: Leaf {} (BP node {}): A={}, B={}", leaf_pos, leaf_node_id, a_val, b_val);
-            
+            println!(
+                "DEBUG: Leaf {} (BP node {}): A={}, B={}",
+                leaf_pos, leaf_node_id, a_val, b_val
+            );
+
             if va[leaf_pos] > 0.0 {
                 mask[leaf_node_id] |= A_BIT;
             }
             if vb[leaf_pos] > 0.0 {
                 mask[leaf_node_id] |= B_BIT;
             }
-            
-            println!("DEBUG: Mask for BP node {} = {:02b}", leaf_node_id, mask[leaf_node_id]);
+
+            println!(
+                "DEBUG: Mask for BP node {} = {:02b}",
+                leaf_node_id, mask[leaf_node_id]
+            );
         }
     }
-    
+
     // Propagate masks up the tree (like unifrac_pair), but only for internal nodes
     println!("DEBUG: Propagating masks up the tree:");
     for &node in post {
@@ -1136,17 +1164,23 @@ fn unifrac_succparen_normalized(
         if kids[node].is_empty() {
             continue; // Skip leaf nodes in the tree structure
         }
-        
+
         let initial_mask = mask[node];
         for &child in &kids[node] {
-            println!("DEBUG: Node {} gets mask {:02b} from child {}", node, mask[child], child);
+            println!(
+                "DEBUG: Node {} gets mask {:02b} from child {}",
+                node, mask[child], child
+            );
             mask[node] |= mask[child];
         }
         if initial_mask != mask[node] {
-            println!("DEBUG: Node {} mask changed: {:02b} -> {:02b}", node, initial_mask, mask[node]);
+            println!(
+                "DEBUG: Node {} mask changed: {:02b} -> {:02b}",
+                node, initial_mask, mask[node]
+            );
         }
     }
-    
+
     // Calculate shared and union branch lengths (like unifrac_pair)
     let (mut shared, mut union) = (0.0, 0.0);
     println!("DEBUG: Branch analysis for distance calculation:");
@@ -1159,13 +1193,16 @@ fn unifrac_succparen_normalized(
         let branch_type = if m == A_BIT {
             "A only"
         } else if m == B_BIT {
-            "B only" 
+            "B only"
         } else {
             "Both A&B"
         };
-        
-        println!("DEBUG: Node {} (len={:.3}): mask={:02b} = {}", node, len, m, branch_type);
-        
+
+        println!(
+            "DEBUG: Node {} (len={:.3}): mask={:02b} = {}",
+            node, len, m, branch_type
+        );
+
         if m == A_BIT || m == B_BIT {
             // Branch present in only one sample
             union += len;
@@ -1175,10 +1212,18 @@ fn unifrac_succparen_normalized(
             union += len;
         }
     }
-    
-    println!("DEBUG: UniFrac calculation - shared: {}, union: {}, distance: {}", 
-             shared, union, if union == 0.0 { 0.0 } else { 1.0 - shared / union });
-    
+
+    println!(
+        "DEBUG: UniFrac calculation - shared: {}, union: {}, distance: {}",
+        shared,
+        union,
+        if union == 0.0 {
+            0.0
+        } else {
+            1.0 - shared / union
+        }
+    );
+
     // Return UniFrac distance: 1.0 - shared/union (like unifrac_pair)
     if union == 0.0 {
         0.0
@@ -1286,19 +1331,19 @@ fn collect_children<N: succparen::bitwise::ops::NndOne>(
 
 // End of NewDistUniFrac
 
-
-/// Build a bitmask for data[i] > 0.0 using AVX2 intrinsics. 
+/// Build a bitmask for data[i] > 0.0 using AVX2 intrinsics.
 /// # Safety
-/// - This function is marked `unsafe` because it uses `target_feature(enable = "avx2")` 
+/// - This function is marked `unsafe` because it uses `target_feature(enable = "avx2")`
 ///   and raw pointer arithmetic.
 /// - The caller must ensure the CPU supports AVX2.
-/// 
+///
 /// # Parameters
 /// - `data`: slice of f32 values (length can be very large).
 /// # Returns
 /// - A `Vec<u64>` with `(data.len() + 63) / 64` elements.
 ///   Each bit in the `u64` corresponds to one element in `data`,
 ///   set if `data[i] > 0.0`.
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 #[target_feature(enable = "avx2")]
 pub unsafe fn make_presence_mask_f32_avx2(data: &[f32]) -> Vec<u64> {
     let len = data.len();
@@ -1317,7 +1362,7 @@ pub unsafe fn make_presence_mask_f32_avx2(data: &[f32]) -> Vec<u64> {
         let v = _mm256_loadu_ps(ptr.add(offset));
         // Compare each float in `v` to 0.0 => result bits set to 1 if > 0.0
         let gt_mask = _mm256_cmp_ps(v, _mm256_set1_ps(0.0), _CMP_GT_OQ);
-        // `_mm256_movemask_ps` extracts the top bit of each float comparison 
+        // `_mm256_movemask_ps` extracts the top bit of each float comparison
         // into an 8-bit integer: 1 bit per float, 0..7
         let bitmask = _mm256_movemask_ps(gt_mask) as u32; // 8 bits used
 
@@ -1333,7 +1378,7 @@ pub unsafe fn make_presence_mask_f32_avx2(data: &[f32]) -> Vec<u64> {
             // Check if bit i is set
             if (bitmask & (1 << i)) != 0 {
                 let chunk_idx = global_idx / 64;
-                let bit_idx   = global_idx % 64;
+                let bit_idx = global_idx % 64;
                 mask[chunk_idx] |= 1 << bit_idx;
             }
         }
@@ -1344,7 +1389,7 @@ pub unsafe fn make_presence_mask_f32_avx2(data: &[f32]) -> Vec<u64> {
         for i in tail_start..(tail_start + remainder) {
             if *data.get_unchecked(i) > 0.0 {
                 let chunk_idx = i / 64;
-                let bit_idx   = i % 64;
+                let bit_idx = i % 64;
                 mask[chunk_idx] |= 1 << bit_idx;
             }
         }
@@ -1367,9 +1412,16 @@ fn make_presence_mask_f32_scalar(data: &[f32]) -> Vec<u64> {
 }
 
 fn make_presence_mask_f32(data: &[f32]) -> Vec<u64> {
-    if is_x86_feature_detected!("avx2") {
-        unsafe { make_presence_mask_f32_avx2(data) }
-    } else {
+    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    {
+        if is_x86_feature_detected!("avx2") {
+            unsafe { make_presence_mask_f32_avx2(data) }
+        } else {
+            make_presence_mask_f32_scalar(data)
+        }
+    }
+    #[cfg(not(any(target_arch = "x86", target_arch = "x86_64")))]
+    {
         make_presence_mask_f32_scalar(data)
     }
 }
@@ -1610,7 +1662,6 @@ impl<T: Copy + Clone + Sized + Send + Sync> Distance<T> for DistCFFI<T> {
     } // end of compute
 } // end of impl block
 
-
 //DistUniFrac_C
 // Demonstration of calling `one_dense_pair_v2t` from Rust with tests
 // -----------------------------------------------------------------------------
@@ -1655,10 +1706,7 @@ pub struct DistUniFrac_C {
 extern "C" {
     /// Builds a BPTree from a Newick string.  
     /// On success, it writes an allocated `OpaqueBPTree*` into `tree_data_out`.
-    pub fn load_bptree_opaque(
-        newick: *const c_char,
-        tree_data_out: *mut *mut OpaqueBPTree,
-    );
+    pub fn load_bptree_opaque(newick: *const c_char, tree_data_out: *mut *mut OpaqueBPTree);
 
     /// Frees the BPTree allocated by `load_bptree_opaque`.
     pub fn destroy_bptree_opaque(tree_data: *mut *mut OpaqueBPTree);
@@ -1861,12 +1909,11 @@ impl<T: Copy + Clone + Sized + Send + Sync, F: Float> Distance<T> for DistPtr<T,
 //=======================================================================================
 
 #[cfg(test)]
-
 mod tests {
     use super::*;
-    use log::debug;
     use env_logger::Env;
-    use std::ffi::{CString};
+    use log::debug;
+    use std::ffi::CString;
     use std::ptr;
 
     fn init_log() -> u64 {
@@ -1888,11 +1935,11 @@ mod tests {
         let mut c_ptrs = Vec::with_capacity(obs.len());
         for s in obs {
             // into_raw() -> *mut c_char
-            c_ptrs.push(s.into_raw()); 
+            c_ptrs.push(s.into_raw());
         }
         c_ptrs
     }
-    
+
     fn free_obs_ids(c_ptrs: &mut [*mut c_char]) {
         for &mut ptr in c_ptrs {
             if !ptr.is_null() {
@@ -2323,12 +2370,15 @@ mod tests {
     #[test]
     fn test_unifrac_unweighted() {
         let _ = env_logger::Builder::from_env(Env::default().default_filter_or("debug"))
-        .is_test(true)
-        .try_init();
+            .is_test(true)
+            .try_init();
 
-        let newick_str = "((T1:0.1,(T2:0.05,T3:0.05):0.02):0.3,(T4:0.2,(T5:0.1,T6:0.15):0.05):0.4);";
-        let feature_names = vec!["T1","T2","T3","T4","T5","T6"]
-            .into_iter().map(|s| s.to_string()).collect();
+        let newick_str =
+            "((T1:0.1,(T2:0.05,T3:0.05):0.02):0.3,(T4:0.2,(T5:0.1,T6:0.15):0.05):0.4);";
+        let feature_names = vec!["T1", "T2", "T3", "T4", "T5", "T6"]
+            .into_iter()
+            .map(|s| s.to_string())
+            .collect();
         let dist_uni = DistUniFrac::new(newick_str, false, feature_names).unwrap();
 
         // SampleA: T1=7, T3=5, T4=2 => presence
@@ -2345,11 +2395,14 @@ mod tests {
     #[test]
     fn test_unifrac_weighted() {
         let _ = env_logger::Builder::from_env(Env::default().default_filter_or("debug"))
-        .is_test(true)
-        .try_init();
-        let newick_str = "((T1:0.1,(T2:0.05,T3:0.05):0.02):0.3,(T4:0.2,(T5:0.1,T6:0.15):0.05):0.4);";
-        let feature_names = vec!["T1","T2","T3","T4","T5","T6"]
-            .into_iter().map(|s| s.to_string()).collect();
+            .is_test(true)
+            .try_init();
+        let newick_str =
+            "((T1:0.1,(T2:0.05,T3:0.05):0.02):0.3,(T4:0.2,(T5:0.1,T6:0.15):0.05):0.4);";
+        let feature_names = vec!["T1", "T2", "T3", "T4", "T5", "T6"]
+            .into_iter()
+            .map(|s| s.to_string())
+            .collect();
         let dist_uni = DistUniFrac::new(newick_str, true, feature_names).unwrap();
 
         // Weighted with same data
@@ -2454,14 +2507,14 @@ mod tests {
 
         let dist = dist_obj.eval(&va, &vb);
         println!("Weighted UniFrac(A,B) = {}", dist);
-        
+
         // Test with different abundance patterns
         let vc = [10.0, 0.0, 1.0, 0.5, 0.0, 0.0]; // Different weights
         let vd = [0.0, 2.0, 0.0, 0.0, 8.0, 1.0];
-        
+
         let dist2 = dist_obj.eval(&vc, &vd);
         println!("Weighted UniFrac(C,D) = {}", dist2);
-        
+
         // Weighted distances should be different from unweighted for different abundance patterns
         assert!(dist >= 0.0 && dist <= 1.0, "Distance should be in [0,1]");
         assert!(dist2 >= 0.0 && dist2 <= 1.0, "Distance should be in [0,1]");
@@ -2479,20 +2532,24 @@ mod tests {
     #[test]
     fn test_new_dist_unifrac_function_call() {
         let _ = env_logger::Builder::from_env(Env::default().default_filter_or("debug"))
-        .is_test(true)
-        .try_init();
+            .is_test(true)
+            .try_init();
 
-        let newick_str = "((T1:0.1,(T2:0.05,T3:0.05):0.02):0.3,(T4:0.2,(T5:0.1,T6:0.15):0.05):0.4);";
-        let feature_names = vec!["T1","T2","T3","T4","T5","T6"]
-            .into_iter().map(|s| s.to_string()).collect::<Vec<String>>();
+        let newick_str =
+            "((T1:0.1,(T2:0.05,T3:0.05):0.02):0.3,(T4:0.2,(T5:0.1,T6:0.15):0.05):0.4);";
+        let feature_names = vec!["T1", "T2", "T3", "T4", "T5", "T6"]
+            .into_iter()
+            .map(|s| s.to_string())
+            .collect::<Vec<String>>();
         let weighted = false;
-        
+
         // Test the exact function call pattern requested
-        let dist_unifrac = NewDistUniFrac::new(&newick_str, weighted, feature_names.clone()).unwrap();
-        
+        let dist_unifrac =
+            NewDistUniFrac::new(&newick_str, weighted, feature_names.clone()).unwrap();
+
         assert_eq!(dist_unifrac.num_features(), 6);
         assert_eq!(dist_unifrac.weighted, false);
-        
+
         // Test with some sample data
         let va = vec![1.0, 0.0, 1.0, 1.0, 0.0, 0.0]; // T1, T3, T4 present
         let vb = vec![0.0, 1.0, 0.0, 0.0, 1.0, 1.0]; // T2, T5, T6 present
@@ -2500,7 +2557,7 @@ mod tests {
         let d = dist_unifrac.eval(&va, &vb);
         println!("New UniFrac distance = {}", d);
         assert!(d >= 0.0 && d <= 1.0);
-        
+
         // Test that it's actually using the unifrac_bp pattern (non-zero distance for different samples)
         assert!(d > 0.0); // Should be > 0 since samples have no overlap
     }
@@ -2515,22 +2572,40 @@ mod tests {
         // Simple tree with known structure for manual verification
         let newick_str = "((T1:0.1,T2:0.1):0.2,(T3:0.1,T4:0.1):0.2):0.0;";
         let feature_names = vec!["T1", "T2", "T3", "T4"]
-            .into_iter().map(|s| s.to_string()).collect::<Vec<String>>();
+            .into_iter()
+            .map(|s| s.to_string())
+            .collect::<Vec<String>>();
 
         println!("=== Testing NewDistUniFrac Mathematical Properties ===");
         println!("Tree: {}", newick_str);
         println!("Testing shared/union algorithm implementation");
-        
+
         // Create NewDistUniFrac implementation
         let new_dist = NewDistUniFrac::new(&newick_str, false, feature_names.clone()).unwrap();
-        
+
         // Test cases focusing on relative behavior rather than absolute values
         let test_cases = vec![
             // (sample_a, sample_b, description)
-            (vec![1.0, 0.0, 0.0, 0.0], vec![0.0, 1.0, 0.0, 0.0], "T1 vs T2 (sister taxa)"),
-            (vec![1.0, 0.0, 0.0, 0.0], vec![0.0, 0.0, 1.0, 0.0], "T1 vs T3 (distant taxa)"),
-            (vec![1.0, 1.0, 0.0, 0.0], vec![0.0, 0.0, 1.0, 1.0], "T1,T2 vs T3,T4 (complete separation)"),
-            (vec![1.0, 0.0, 1.0, 0.0], vec![0.0, 1.0, 0.0, 1.0], "T1,T3 vs T2,T4 (mixed)"),
+            (
+                vec![1.0, 0.0, 0.0, 0.0],
+                vec![0.0, 1.0, 0.0, 0.0],
+                "T1 vs T2 (sister taxa)",
+            ),
+            (
+                vec![1.0, 0.0, 0.0, 0.0],
+                vec![0.0, 0.0, 1.0, 0.0],
+                "T1 vs T3 (distant taxa)",
+            ),
+            (
+                vec![1.0, 1.0, 0.0, 0.0],
+                vec![0.0, 0.0, 1.0, 1.0],
+                "T1,T2 vs T3,T4 (complete separation)",
+            ),
+            (
+                vec![1.0, 0.0, 1.0, 0.0],
+                vec![0.0, 1.0, 0.0, 1.0],
+                "T1,T3 vs T2,T4 (mixed)",
+            ),
         ];
 
         println!("\nNewDistUniFrac Properties Validation (shared/union algorithm):");
@@ -2539,14 +2614,19 @@ mod tests {
 
         for (va, vb, description) in test_cases {
             let new_distance = new_dist.eval(&va, &vb);
-            
+
             println!("{:<25} | {:>15.6}", description, new_distance);
         }
-        
+
         // Validate basic UniFrac properties instead of comparing to DistUniFrac
-        let identical_distance = new_dist.eval(&vec![1.0, 0.0, 0.0, 0.0], &vec![1.0, 0.0, 0.0, 0.0]);
-        assert!(identical_distance.abs() < 1e-6, "Identical samples should have distance ~0, got {}", identical_distance);
-        
+        let identical_distance =
+            new_dist.eval(&vec![1.0, 0.0, 0.0, 0.0], &vec![1.0, 0.0, 0.0, 0.0]);
+        assert!(
+            identical_distance.abs() < 1e-6,
+            "Identical samples should have distance ~0, got {}",
+            identical_distance
+        );
+
         println!("\nNewDistUniFrac mathematical properties validation passed!");
     }
 
@@ -2559,73 +2639,95 @@ mod tests {
 
         // Very simple 2-leaf tree: (T1:1.0,T2:1.0):0.0;
         // With normalized UniFrac: T1=1/1=1.0, T2=1/1=1.0, difference=1.0-(-1.0)=2.0 at T1 and T2
-        // Then propagated up: T1 branch contributes 1.0*1.0=1.0, T2 branch contributes 1.0*1.0=1.0  
+        // Then propagated up: T1 branch contributes 1.0*1.0=1.0, T2 branch contributes 1.0*1.0=1.0
         // Total distance = 1.0 + 1.0 = 2.0 (this is the normalized UniFrac result)
         let newick_str = "(T1:1.0,T2:1.0):0.0;";
         let feature_names = vec!["T1", "T2"]
-            .into_iter().map(|s| s.to_string()).collect::<Vec<String>>();
+            .into_iter()
+            .map(|s| s.to_string())
+            .collect::<Vec<String>>();
 
         println!("=== Manual UniFrac Calculation Validation ===");
         println!("Tree: {}", newick_str);
         println!("Expected: For T1 vs T2 with normalization, each sample normalized to 1.0");
-        println!("T1 sample: [1.0, 0.0] normalized = [1.0, 0.0]"); 
+        println!("T1 sample: [1.0, 0.0] normalized = [1.0, 0.0]");
         println!("T2 sample: [0.0, 1.0] normalized = [0.0, 1.0]");
         println!("Differences: T1 node = 1.0-0.0=1.0, T2 node = 0.0-1.0=-1.0");
         println!("Distance = |1.0|*1.0 + |-1.0|*1.0 = 2.0");
-        
+
         let dist_unifrac = NewDistUniFrac::new(&newick_str, false, feature_names).unwrap();
-        
+
         // Test case: T1 present vs T2 present (completely different)
         let va = vec![1.0, 0.0]; // T1 only
         let vb = vec![0.0, 1.0]; // T2 only
-        
+
         let distance = dist_unifrac.eval(&va, &vb);
         println!("Calculated distance: {}", distance);
-        
+
         // For the shared/union UniFrac algorithm (which NewDistUniFrac uses):
         // T1 vs T2: no shared branches, so shared = 0.0
         // Union includes both T1 and T2 branches: union = 1.0 + 1.0 = 2.0
         // UniFrac = 1.0 - shared/union = 1.0 - 0.0/2.0 = 1.0
         let expected_distance = 1.0; // Not 2.0 - that was the old algorithm
-        
+
         let expected = expected_distance; // Use the corrected expected value
         let tolerance = 0.01;
-        
-        assert!((distance - expected).abs() < tolerance, 
-                "Manual calculation validation failed: expected ~{}, got {}, diff={}", 
-                expected, distance, (distance - expected).abs());
-        
+
+        assert!(
+            (distance - expected).abs() < tolerance,
+            "Manual calculation validation failed: expected ~{}, got {}, diff={}",
+            expected,
+            distance,
+            (distance - expected).abs()
+        );
+
         // Test identical samples (should be 0)
         let identical_distance = dist_unifrac.eval(&va, &va);
-        assert!(identical_distance.abs() < 1e-10, 
-                "Identical samples should have distance 0, got {}", identical_distance);
-        
+        assert!(
+            identical_distance.abs() < 1e-10,
+            "Identical samples should have distance 0, got {}",
+            identical_distance
+        );
+
         println!(" Manual calculation validation passed!");
-        println!("  Expected: {:.3}, Calculated: {:.6}, Difference: {:.6}", 
-                 expected, distance, (distance - expected).abs());
+        println!(
+            "  Expected: {:.3}, Calculated: {:.6}, Difference: {:.6}",
+            expected,
+            distance,
+            (distance - expected).abs()
+        );
 
         // Test with a slightly more complex tree: ((T1:0.5,T2:0.5):0.5,T3:1.0):0.0;
         println!("\n=== Complex Tree Validation ===");
         let complex_newick = "((T1:0.5,T2:0.5):0.5,T3:1.0):0.0;";
-        let complex_features = vec!["T1", "T2", "T3"].into_iter().map(|s| s.to_string()).collect();
-        
+        let complex_features = vec!["T1", "T2", "T3"]
+            .into_iter()
+            .map(|s| s.to_string())
+            .collect();
+
         let complex_dist = NewDistUniFrac::new(&complex_newick, false, complex_features).unwrap();
-        
+
         // T1 vs T2 (sister taxa): should share the 0.5 branch length
         let dist_12 = complex_dist.eval(&vec![1.0, 0.0, 0.0], &vec![0.0, 1.0, 0.0]);
         // T1 vs T3 (more distant): should share less
         let dist_13 = complex_dist.eval(&vec![1.0, 0.0, 0.0], &vec![0.0, 0.0, 1.0]);
-        
+
         println!("T1 vs T2 (sisters): {:.6}", dist_12);
         println!("T1 vs T3 (distant): {:.6}", dist_13);
-        
+
         // Sister taxa should be closer than distant taxa
-        assert!(dist_12 < dist_13, 
-                "Sister taxa should be closer: T1-T2({:.6}) should be < T1-T3({:.6})", 
-                dist_12, dist_13);
-        
+        assert!(
+            dist_12 < dist_13,
+            "Sister taxa should be closer: T1-T2({:.6}) should be < T1-T3({:.6})",
+            dist_12,
+            dist_13
+        );
+
         println!(" Phylogenetic relationship validation passed!");
-        println!("  Sister taxa distance ({:.6}) < distant taxa distance ({:.6})", dist_12, dist_13);
+        println!(
+            "  Sister taxa distance ({:.6}) < distant taxa distance ({:.6})",
+            dist_12, dist_13
+        );
     }
 
     /// Test NewDistUniFrac against ground truth values from test files
@@ -2633,73 +2735,99 @@ mod tests {
     fn test_new_dist_unifrac_ground_truth_validation() {
         use std::fs;
         use std::path::Path;
-        
+
         let _ = env_logger::Builder::from_env(Env::default().default_filter_or("debug"))
             .is_test(true)
             .try_init();
 
         println!("=== Ground Truth Validation Test ===");
         println!("Testing NewDistUniFrac against actual ground truth from test files");
-        
+
         // Load test data from data/ folder
-        let tree_str = fs::read_to_string("data/test.nwk").expect("Failed to read test.nwk").trim().to_string();
-        
+        let tree_str = fs::read_to_string("data/test.nwk")
+            .expect("Failed to read test.nwk")
+            .trim()
+            .to_string();
+
         println!("Tree: {}", tree_str);
-        
-        // Feature names from OTU table  
-        let features = vec!["T1".to_string(), "T2".to_string(), "T3".to_string(), "T4".to_string(), 
-                           "T5".to_string(), "T6".to_string(), "T7".to_string()];
-        
+
+        // Feature names from OTU table
+        let features = vec![
+            "T1".to_string(),
+            "T2".to_string(),
+            "T3".to_string(),
+            "T4".to_string(),
+            "T5".to_string(),
+            "T6".to_string(),
+            "T7".to_string(),
+        ];
+
         println!("Features: {:?}", features);
-        
+
         // Sample data from test_OTU_table.txt (converted to f32)
         let samples = vec![
             ("SampleA", vec![1.0, 0.0, 1.0, 1.0, 0.0, 0.0, 0.0]), // T1,T3,T4 present
             ("SampleB", vec![0.0, 1.0, 0.0, 0.0, 1.0, 1.0, 0.0]), // T2,T5,T6 present
             ("SampleC", vec![1.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0]), // T1,T3,T7 present
         ];
-        
+
         for (name, data) in &samples {
             println!("{}: {:?}", name, data);
         }
-        
+
         // Ground truth distances from test_truth.txt
         let ground_truth = vec![
             (("SampleA", "SampleB"), 0.4929577112197876),
             (("SampleA", "SampleC"), 0.3409090936183929),
             (("SampleB", "SampleC"), 0.4577465057373047),
         ];
-        
-        // Create NewDistUniFrac 
-        let new_dist = NewDistUniFrac::new(&tree_str, false, features).expect("Failed to create NewDistUniFrac");
-        
+
+        // Create NewDistUniFrac
+        let new_dist = NewDistUniFrac::new(&tree_str, false, features)
+            .expect("Failed to create NewDistUniFrac");
+
         println!("\n=== Validation Against Ground Truth (tolerance: 0.01) ===");
-        println!("{:<12} | {:<12} | {:>15} | {:>15} | {:>10} | Status", 
-                 "Sample A", "Sample B", "NewDistUniFrac", "Ground Truth", "Diff");
+        println!(
+            "{:<12} | {:<12} | {:>15} | {:>15} | {:>10} | Status",
+            "Sample A", "Sample B", "NewDistUniFrac", "Ground Truth", "Diff"
+        );
         println!("{}", "-".repeat(80));
-        
+
         let tolerance = 0.01;
         let mut all_passed = true;
-        
+
         // Test against ground truth values
         for ((sample_a, sample_b), expected_distance) in ground_truth {
-            let data_a = &samples.iter().find(|(name, _)| name == &sample_a).unwrap().1;
-            let data_b = &samples.iter().find(|(name, _)| name == &sample_b).unwrap().1;
-            
+            let data_a = &samples
+                .iter()
+                .find(|(name, _)| name == &sample_a)
+                .unwrap()
+                .1;
+            let data_b = &samples
+                .iter()
+                .find(|(name, _)| name == &sample_b)
+                .unwrap()
+                .1;
+
             let new_distance = new_dist.eval(data_a, data_b) as f64;
             let diff = (new_distance - expected_distance).abs();
             let status = if diff < tolerance { "PASS" } else { "FAIL" };
-            
+
             if diff >= tolerance {
                 all_passed = false;
             }
-            
-            println!("{:<12} | {:<12} | {:>15.6} | {:>15.6} | {:>10.6} | {}", 
-                     sample_a, sample_b, new_distance, expected_distance, diff, status);
+
+            println!(
+                "{:<12} | {:<12} | {:>15.6} | {:>15.6} | {:>10.6} | {}",
+                sample_a, sample_b, new_distance, expected_distance, diff, status
+            );
         }
-        
+
         if all_passed {
-            println!("\nAll ground truth validation tests passed within tolerance of {}!", tolerance);
+            println!(
+                "\nAll ground truth validation tests passed within tolerance of {}!",
+                tolerance
+            );
             println!("NewDistUniFrac matches the ground truth values from test_truth.txt!");
         } else {
             panic!("Ground truth validation failed! NewDistUniFrac results don't match test_truth.txt values");
@@ -2710,36 +2838,38 @@ mod tests {
     fn test_new_dist_unifrac_mouse_gut_validation() {
         use std::fs;
         use std::path::Path;
-        
+
         let _ = env_logger::Builder::from_env(Env::default().default_filter_or("warn"))
             .is_test(true)
             .try_init();
 
         println!("=== Mouse Gut Data Validation Test ===");
         println!("Testing NewDistUniFrac on real mouse gut microbiome data");
-        
+
         // Check if mouse gut data files exist
         let tree_file = "data/Mouse_gut_zotu_aligned.tre";
         let counts_file = "data/Mouse_gut_zotu_counts.txt";
-        
+
         if !Path::new(tree_file).exists() || !Path::new(counts_file).exists() {
             println!("Mouse gut data files not found, skipping validation");
             return;
         }
-        
+
         // Read files
         let tree_content = fs::read_to_string(tree_file).expect("Failed to read tree file");
         let counts_content = fs::read_to_string(counts_file).expect("Failed to read counts file");
-        
+
         println!("Tree file size: {} characters", tree_content.len());
         println!("Counts file size: {} characters", counts_content.len());
-        
+
         // Parse counts data using existing parsing logic
         let lines: Vec<&str> = counts_content.lines().collect();
-        
+
         fn parse_mouse_gut_format(lines: &[&str]) -> (Vec<String>, Vec<Vec<f32>>, Vec<String>) {
-            if lines.is_empty() { return (vec![], vec![], vec![]); }
-            
+            if lines.is_empty() {
+                return (vec![], vec![], vec![]);
+            }
+
             // Find header line
             let mut header_idx = 0;
             for (i, line) in lines.iter().enumerate() {
@@ -2748,27 +2878,34 @@ mod tests {
                     break;
                 }
             }
-            
+
             let header = lines[header_idx].trim_start_matches('#').trim();
             let parts: Vec<&str> = header.split('\t').collect();
-            
-            if parts.len() < 2 { return (vec![], vec![], vec![]); }
-            
+
+            if parts.len() < 2 {
+                return (vec![], vec![], vec![]);
+            }
+
             let sample_names: Vec<String> = parts[1..].iter().map(|s| s.to_string()).collect();
             let mut feature_names = Vec::new();
             let mut all_samples: Vec<Vec<f32>> = vec![vec![]; sample_names.len()];
-            
+
             // Parse data lines
             for line in lines.iter().skip(header_idx + 1) {
                 let line = line.trim();
-                if line.is_empty() || line.starts_with('#') { continue; }
-                
+                if line.is_empty() || line.starts_with('#') {
+                    continue;
+                }
+
                 let parts: Vec<&str> = line.split('\t').collect();
-                if parts.len() != sample_names.len() + 1 { continue; }
-                
+                if parts.len() != sample_names.len() + 1 {
+                    continue;
+                }
+
                 let feature_name = parts[0].to_string();
-                let values: Result<Vec<f32>, _> = parts[1..].iter().map(|s| s.parse::<f32>()).collect();
-                
+                let values: Result<Vec<f32>, _> =
+                    parts[1..].iter().map(|s| s.parse::<f32>()).collect();
+
                 if let Ok(vals) = values {
                     feature_names.push(feature_name);
                     for (i, val) in vals.into_iter().enumerate() {
@@ -2776,20 +2913,27 @@ mod tests {
                     }
                 }
             }
-            
+
             (feature_names, all_samples, sample_names)
         }
-        
+
         let (features, samples, sample_names) = parse_mouse_gut_format(&lines);
-        
-        println!("Parsed {} features and {} samples", features.len(), sample_names.len());
-        println!("Sample names: {:?}", sample_names.iter().take(5).collect::<Vec<_>>());
-        
+
+        println!(
+            "Parsed {} features and {} samples",
+            features.len(),
+            sample_names.len()
+        );
+        println!(
+            "Sample names: {:?}",
+            sample_names.iter().take(5).collect::<Vec<_>>()
+        );
+
         if features.is_empty() || samples.is_empty() {
             println!("Failed to parse mouse gut data, skipping test");
             return;
         }
-        
+
         // Create NewDistUniFrac implementation
         let new_dist = match NewDistUniFrac::new(&tree_content, false, features.clone()) {
             Ok(d) => d,
@@ -2798,43 +2942,66 @@ mod tests {
                 return;
             }
         };
-        
+
         println!("\n=== Validation Results (tolerance: 0.01) ===");
-        println!("{:<15} | {:<15} | {:>15}", "Sample A", "Sample B", "NewDistUniFrac");
+        println!(
+            "{:<15} | {:<15} | {:>15}",
+            "Sample A", "Sample B", "NewDistUniFrac"
+        );
         println!("{}", "-".repeat(50));
-        
+
         let mut test_count = 0;
-        let max_tests = 10; // Test only first 10 pairs to avoid too much output  
+        let max_tests = 10; // Test only first 10 pairs to avoid too much output
         let mut distances_calculated = Vec::new();
-        
+
         // Test pairwise distances on subset of samples
         for i in 0..std::cmp::min(3, samples.len()) {
-            for j in (i+1)..std::cmp::min(4, samples.len()) {
-                if test_count >= max_tests { break; }
-                
+            for j in (i + 1)..std::cmp::min(4, samples.len()) {
+                if test_count >= max_tests {
+                    break;
+                }
+
                 let sample_a = &sample_names[i];
                 let sample_b = &sample_names[j];
-                
+
                 // Calculate with NewDistUniFrac only
                 let new_distance = new_dist.eval(&samples[i], &samples[j]) as f64;
                 distances_calculated.push(new_distance);
-                
+
                 test_count += 1;
-                println!("{:<15} | {:<15} | {:>15.6}", sample_a, sample_b, new_distance);
+                println!(
+                    "{:<15} | {:<15} | {:>15.6}",
+                    sample_a, sample_b, new_distance
+                );
             }
-            if test_count >= max_tests { break; }
+            if test_count >= max_tests {
+                break;
+            }
         }
-        
+
         // Validate basic properties instead of comparing to DistUniFrac
-        println!("\nNewDistUniFrac successfully processed {} sample pairs from mouse gut data!", test_count);
-        println!("Distance range: {:.6} to {:.6}", 
-                 distances_calculated.iter().fold(f64::INFINITY, |a, &b| a.min(b)),
-                 distances_calculated.iter().fold(f64::NEG_INFINITY, |a, &b| a.max(b)));
-        
+        println!(
+            "\nNewDistUniFrac successfully processed {} sample pairs from mouse gut data!",
+            test_count
+        );
+        println!(
+            "Distance range: {:.6} to {:.6}",
+            distances_calculated
+                .iter()
+                .fold(f64::INFINITY, |a, &b| a.min(b)),
+            distances_calculated
+                .iter()
+                .fold(f64::NEG_INFINITY, |a, &b| a.max(b))
+        );
+
         // Test self-distance (should be 0)
         let self_distance = new_dist.eval(&samples[0], &samples[0]);
-        assert!(self_distance.abs() < 1e-6, "Self distance should be ~0, got {}", self_distance);
-        
+        assert!(
+            self_distance.abs() < 1e-6,
+            "Self distance should be ~0, got {}",
+            self_distance
+        );
+
         println!("Self-distance validation: PASS (got {:.10})", self_distance);
         println!("Mouse gut microbiome data processing completed successfully!");
     }
@@ -2846,24 +3013,36 @@ mod tests {
     #[test]
     fn test_new_dist_unifrac_creation() {
         init_log();
-        
+
         // Simple 4-leaf tree
         let newick_str = "((T1:0.1,T2:0.2):0.05,(T3:0.3,T4:0.4):0.1):0.0;";
-        let feature_names = vec!["T1".to_string(), "T2".to_string(), "T3".to_string(), "T4".to_string()];
-        
+        let feature_names = vec![
+            "T1".to_string(),
+            "T2".to_string(),
+            "T3".to_string(),
+            "T4".to_string(),
+        ];
+
         // Test unweighted
         let dist_unifrac = NewDistUniFrac::new(newick_str, false, feature_names.clone());
-        assert!(dist_unifrac.is_ok(), "Failed to create unweighted NewDistUniFrac: {:?}", dist_unifrac.err());
-        
+        assert!(
+            dist_unifrac.is_ok(),
+            "Failed to create unweighted NewDistUniFrac: {:?}",
+            dist_unifrac.err()
+        );
+
         let unifrac = dist_unifrac.unwrap();
         assert_eq!(unifrac.weighted, false);
         assert_eq!(unifrac.feature_names.len(), 4);
         assert_eq!(unifrac.num_features(), 4);
-        
+
         // Test weighted
         let dist_unifrac_weighted = NewDistUniFrac::new(newick_str, true, feature_names);
-        assert!(dist_unifrac_weighted.is_ok(), "Failed to create weighted NewDistUniFrac");
-        
+        assert!(
+            dist_unifrac_weighted.is_ok(),
+            "Failed to create weighted NewDistUniFrac"
+        );
+
         let unifrac_weighted = dist_unifrac_weighted.unwrap();
         assert_eq!(unifrac_weighted.weighted, true);
     }
@@ -2871,11 +3050,16 @@ mod tests {
     #[test]
     fn test_new_dist_unifrac_invalid_newick() {
         init_log();
-        
+
         // Invalid Newick string - missing closing parenthesis
         let invalid_newick = "((T1:0.1,T2:0.2):0.05,(T3:0.3,T4:0.4):0.1;";
-        let feature_names = vec!["T1".to_string(), "T2".to_string(), "T3".to_string(), "T4".to_string()];
-        
+        let feature_names = vec![
+            "T1".to_string(),
+            "T2".to_string(),
+            "T3".to_string(),
+            "T4".to_string(),
+        ];
+
         let result = NewDistUniFrac::new(invalid_newick, false, feature_names);
         assert!(result.is_err(), "Should fail with invalid Newick string");
     }
@@ -2883,144 +3067,205 @@ mod tests {
     #[test]
     fn test_new_dist_unifrac_missing_feature() {
         init_log();
-        
+
         let newick_str = "((T1:0.1,T2:0.2):0.05,(T3:0.3,T4:0.4):0.1):0.0;";
         let feature_names = vec!["T1".to_string(), "T2".to_string(), "T5".to_string()]; // T5 doesn't exist in tree
-        
+
         let result = NewDistUniFrac::new(newick_str, false, feature_names);
         assert!(result.is_err(), "Should fail with missing feature name");
-        
+
         let err_msg = format!("{}", result.unwrap_err());
-        assert!(err_msg.contains("Feature name 'T5' not found in tree"), 
-                "Error message should mention missing feature: {}", err_msg);
+        assert!(
+            err_msg.contains("Feature name 'T5' not found in tree"),
+            "Error message should mention missing feature: {}",
+            err_msg
+        );
     }
 
     #[test]
     fn test_new_dist_unifrac_identical_samples() {
         init_log();
-        
+
         let newick_str = "((T1:0.1,T2:0.2):0.05,(T3:0.3,T4:0.4):0.1):0.0;";
-        let feature_names = vec!["T1".to_string(), "T2".to_string(), "T3".to_string(), "T4".to_string()];
-        
+        let feature_names = vec![
+            "T1".to_string(),
+            "T2".to_string(),
+            "T3".to_string(),
+            "T4".to_string(),
+        ];
+
         let dist_unifrac = NewDistUniFrac::new(newick_str, false, feature_names).unwrap();
-        
+
         // Identical samples should have distance 0
         let va = vec![1.0, 0.0, 1.0, 0.0];
         let vb = vec![1.0, 0.0, 1.0, 0.0];
-        
+
         let distance = dist_unifrac.eval(&va, &vb);
-        assert!(distance.abs() < 1e-6, "Distance between identical samples should be ~0, got {}", distance);
+        assert!(
+            distance.abs() < 1e-6,
+            "Distance between identical samples should be ~0, got {}",
+            distance
+        );
     }
 
     #[test]
     fn test_new_dist_unifrac_completely_different_samples() {
         init_log();
-        
+
         let newick_str = "((T1:0.1,T2:0.2):0.05,(T3:0.3,T4:0.4):0.1):0.0;";
-        let feature_names = vec!["T1".to_string(), "T2".to_string(), "T3".to_string(), "T4".to_string()];
-        
+        let feature_names = vec![
+            "T1".to_string(),
+            "T2".to_string(),
+            "T3".to_string(),
+            "T4".to_string(),
+        ];
+
         let new_dist = NewDistUniFrac::new(newick_str, false, feature_names).unwrap();
-        
+
         // Completely different samples - test against known expected value
         let va = vec![1.0, 1.0, 0.0, 0.0]; // T1, T2 present
         let vb = vec![0.0, 0.0, 1.0, 1.0]; // T3, T4 present
-        
+
         let new_distance = new_dist.eval(&va, &vb);
-        
-        println!("NewDistUniFrac distance for completely different samples: {}", new_distance);
-        
+
+        println!(
+            "NewDistUniFrac distance for completely different samples: {}",
+            new_distance
+        );
+
         // For NewDistUniFrac (shared/union algorithm):
         // va = [1,1,0,0] (T1,T2), vb = [0,0,1,1] (T3,T4)
         // No shared branches between the two clades, so shared = 0
         // Union includes all branches, so UniFrac = 1.0 - 0/union = 1.0
         let expected_distance = 1.0; // Correct value for shared/union algorithm
-        assert!((new_distance - expected_distance).abs() < 0.01, 
-            "NewDistUniFrac ({}) should match expected value ({}) within 0.01 tolerance", 
-            new_distance, expected_distance);
-        
+        assert!(
+            (new_distance - expected_distance).abs() < 0.01,
+            "NewDistUniFrac ({}) should match expected value ({}) within 0.01 tolerance",
+            new_distance,
+            expected_distance
+        );
+
         // Also verify it's a substantial distance as expected
-        assert!(new_distance > 0.5, "Distance should be substantial for completely different samples, got {}", new_distance);
+        assert!(
+            new_distance > 0.5,
+            "Distance should be substantial for completely different samples, got {}",
+            new_distance
+        );
     }
 
     #[test]
     fn test_new_dist_unifrac_zero_samples() {
         init_log();
-        
+
         let newick_str = "((T1:0.1,T2:0.2):0.05,(T3:0.3,T4:0.4):0.1):0.0;";
-        let feature_names = vec!["T1".to_string(), "T2".to_string(), "T3".to_string(), "T4".to_string()];
-        
+        let feature_names = vec![
+            "T1".to_string(),
+            "T2".to_string(),
+            "T3".to_string(),
+            "T4".to_string(),
+        ];
+
         let dist_unifrac = NewDistUniFrac::new(newick_str, false, feature_names).unwrap();
-        
+
         // Both samples empty
         let va = vec![0.0, 0.0, 0.0, 0.0];
         let vb = vec![0.0, 0.0, 0.0, 0.0];
-        
+
         let distance = dist_unifrac.eval(&va, &vb);
-        assert!(distance.abs() < 1e-6, "Distance between empty samples should be ~0, got {}", distance);
+        assert!(
+            distance.abs() < 1e-6,
+            "Distance between empty samples should be ~0, got {}",
+            distance
+        );
     }
 
     #[test]
     fn test_new_dist_unifrac_single_feature() {
         init_log();
-        
+
         let newick_str = "((T1:0.1,T2:0.2):0.05,(T3:0.3,T4:0.4):0.1):0.0;";
-        let feature_names = vec!["T1".to_string(), "T2".to_string(), "T3".to_string(), "T4".to_string()];
-        
+        let feature_names = vec![
+            "T1".to_string(),
+            "T2".to_string(),
+            "T3".to_string(),
+            "T4".to_string(),
+        ];
+
         let new_dist = NewDistUniFrac::new(newick_str, false, feature_names.clone()).unwrap();
-        
+
         // Test T1 vs T2 (sister taxa) - basic validation
         let va = vec![1.0, 0.0, 0.0, 0.0]; // Only T1
         let vb = vec![0.0, 1.0, 0.0, 0.0]; // Only T2
-        
+
         let new_distance = new_dist.eval(&va, &vb);
-        
+
         println!("Sister taxa - NewDistUniFrac: {}", new_distance);
-        assert!(new_distance >= 0.0 && new_distance <= 1.0, 
-            "NewDistUniFrac distance ({}) should be between 0.0 and 1.0", new_distance);
-        
+        assert!(
+            new_distance >= 0.0 && new_distance <= 1.0,
+            "NewDistUniFrac distance ({}) should be between 0.0 and 1.0",
+            new_distance
+        );
+
         // Test T1 vs T3 (more distant) - should be larger distance
         let vc = vec![0.0, 0.0, 1.0, 0.0]; // Only T3
         let new_distance2 = new_dist.eval(&va, &vc);
-        
+
         println!("Distant taxa - NewDistUniFrac: {}", new_distance2);
-        assert!(new_distance2 >= 0.0 && new_distance2 <= 1.0, 
-            "NewDistUniFrac distance ({}) should be between 0.0 and 1.0", new_distance2);
-        assert!(new_distance2 > new_distance, 
-            "Distance to more distant taxa ({}) should be larger than sister taxa ({})", 
-            new_distance2, new_distance);
-        
+        assert!(
+            new_distance2 >= 0.0 && new_distance2 <= 1.0,
+            "NewDistUniFrac distance ({}) should be between 0.0 and 1.0",
+            new_distance2
+        );
+        assert!(
+            new_distance2 > new_distance,
+            "Distance to more distant taxa ({}) should be larger than sister taxa ({})",
+            new_distance2,
+            new_distance
+        );
+
         // Verify distance ordering is preserved
-        assert!(new_distance2 > new_distance, "More distant taxa should have larger distance");
+        assert!(
+            new_distance2 > new_distance,
+            "More distant taxa should have larger distance"
+        );
     }
 
     #[test]
     fn test_new_dist_unifrac_weighted_flag() {
         init_log();
-        
+
         let newick_str = "((T1:0.1,T2:0.2):0.05,(T3:0.3,T4:0.4):0.1):0.0;";
-        let feature_names = vec!["T1".to_string(), "T2".to_string(), "T3".to_string(), "T4".to_string()];
-        
-        let dist_unweighted = NewDistUniFrac::new(newick_str, false, feature_names.clone()).unwrap();
+        let feature_names = vec![
+            "T1".to_string(),
+            "T2".to_string(),
+            "T3".to_string(),
+            "T4".to_string(),
+        ];
+
+        let dist_unweighted =
+            NewDistUniFrac::new(newick_str, false, feature_names.clone()).unwrap();
         let dist_weighted = NewDistUniFrac::new(newick_str, true, feature_names).unwrap();
-        
+
         // Verify the weighted flag is stored correctly
         assert_eq!(dist_unweighted.weighted, false);
         assert_eq!(dist_weighted.weighted, true);
-        
+
         // Note: The current unifrac_pair implementation is unweighted
         // So both will give the same result regardless of the flag
-        let va = vec![10.0, 0.0, 1.0, 0.0];  // Different abundances
+        let va = vec![10.0, 0.0, 1.0, 0.0]; // Different abundances
         let vb = vec![1.0, 0.0, 10.0, 0.0];
-        
+
         let dist_unwt = dist_unweighted.eval(&va, &vb);
         let dist_wt = dist_weighted.eval(&va, &vb);
-        
+
         println!("Unweighted distance: {}", dist_unwt);
         println!("Weighted distance: {}", dist_wt);
-        
+
         // Both should be the same since unifrac_pair implements unweighted UniFrac
-        assert!((dist_unwt - dist_wt).abs() < 1e-6, 
-                "Both should be same (unweighted) for current implementation");
+        assert!(
+            (dist_unwt - dist_wt).abs() < 1e-6,
+            "Both should be same (unweighted) for current implementation"
+        );
     }
 
     /// Test function for user's tree and CSV files
@@ -3028,29 +3273,35 @@ mod tests {
     fn test_new_dist_unifrac_from_files() {
         use std::fs;
         use std::path::Path;
-        
+
         init_log();
-        
+
         // Use the counts file since it contains the actual feature data we need for UniFrac
         let tree_file = "data/Mouse_gut_zotu_aligned.tre";
         let counts_file = "data/Mouse_gut_zotu_counts.txt";
-        
+
         println!("Testing NewDistUniFrac with real mouse gut microbiome data...");
-        
+
         // Check if files exist
         if !Path::new(tree_file).exists() {
-            println!("Tree file '{}' not found. Please ensure the data folder exists.", tree_file);
+            println!(
+                "Tree file '{}' not found. Please ensure the data folder exists.",
+                tree_file
+            );
             return;
         }
-        
+
         if !Path::new(counts_file).exists() {
-            println!("Counts file '{}' not found. Please ensure the data folder exists.", counts_file);
+            println!(
+                "Counts file '{}' not found. Please ensure the data folder exists.",
+                counts_file
+            );
             return;
         }
-        
+
         println!("Using tree: {}", tree_file);
         println!("Using counts: {}", counts_file);
-        
+
         // Read tree file
         let newick_str = match fs::read_to_string(tree_file) {
             Ok(content) => {
@@ -3062,14 +3313,23 @@ mod tests {
                 return;
             }
         };
-        
-        println!("Tree content (first 100 chars): {}", 
-                 if newick_str.len() > 100 { &newick_str[..100] } else { &newick_str });
-        
+
+        println!(
+            "Tree content (first 100 chars): {}",
+            if newick_str.len() > 100 {
+                &newick_str[..100]
+            } else {
+                &newick_str
+            }
+        );
+
         // Read counts file
         let data_content = match fs::read_to_string(counts_file) {
             Ok(content) => {
-                println!("Successfully read counts file: {} characters", content.len());
+                println!(
+                    "Successfully read counts file: {} characters",
+                    content.len()
+                );
                 content
             }
             Err(e) => {
@@ -3077,18 +3337,20 @@ mod tests {
                 return;
             }
         };
-        
+
         // Parse counts file
         let lines: Vec<&str> = data_content.lines().collect();
         if lines.is_empty() {
             println!("Counts file is empty");
             return;
         }
-        
+
         // Helper function to parse counts/OTU table format
         fn parse_counts_format(lines: &[&str]) -> (Vec<String>, Vec<Vec<f32>>, Vec<String>) {
-            if lines.is_empty() { return (vec![], vec![], vec![]); }
-            
+            if lines.is_empty() {
+                return (vec![], vec![], vec![]);
+            }
+
             // Look for header line (might start with # or be first line)
             let mut header_idx = 0;
             for (i, line) in lines.iter().enumerate() {
@@ -3097,29 +3359,37 @@ mod tests {
                     break;
                 }
             }
-            
+
             let header = lines[header_idx].trim_start_matches('#').trim();
             let separator = if header.contains('\t') { '\t' } else { ',' };
-            
+
             let parts: Vec<&str> = header.split(separator).collect();
-            if parts.len() < 2 { return (vec![], vec![], vec![]); }
-            
+            if parts.len() < 2 {
+                return (vec![], vec![], vec![]);
+            }
+
             // First column usually OTU/feature ID, rest are sample names
-            let sample_names: Vec<String> = parts[1..].iter().map(|s| s.trim().to_string()).collect();
+            let sample_names: Vec<String> =
+                parts[1..].iter().map(|s| s.trim().to_string()).collect();
             let mut feature_names = Vec::new();
             let mut all_samples: Vec<Vec<f32>> = vec![vec![]; sample_names.len()];
-            
+
             // Parse data lines
             for line in lines.iter().skip(header_idx + 1) {
                 let line = line.trim();
-                if line.is_empty() || line.starts_with('#') { continue; }
-                
+                if line.is_empty() || line.starts_with('#') {
+                    continue;
+                }
+
                 let parts: Vec<&str> = line.split(separator).collect();
-                if parts.len() != sample_names.len() + 1 { continue; }
-                
+                if parts.len() != sample_names.len() + 1 {
+                    continue;
+                }
+
                 let feature_name = parts[0].trim().to_string();
-                let values: Result<Vec<f32>, _> = parts[1..].iter().map(|s| s.trim().parse::<f32>()).collect();
-                
+                let values: Result<Vec<f32>, _> =
+                    parts[1..].iter().map(|s| s.trim().parse::<f32>()).collect();
+
                 if let Ok(vals) = values {
                     feature_names.push(feature_name);
                     for (i, val) in vals.into_iter().enumerate() {
@@ -3127,31 +3397,41 @@ mod tests {
                     }
                 }
             }
-            
+
             // Transpose: convert from features x samples to samples x features
             let samples: Vec<Vec<f32>> = all_samples;
-            
+
             (feature_names, samples, sample_names)
         }
-        
+
         // Parse OTU counts format
         let (feature_names, samples, sample_names) = parse_counts_format(&lines);
-        
+
         if feature_names.is_empty() {
             println!("No feature names found");
             return;
         }
-        
+
         if samples.is_empty() {
             println!("No valid samples found");
             return;
         }
-        
-        println!("Found {} features and {} samples", feature_names.len(), samples.len());
-        println!("Features (first 10): {:?}", 
-                 if feature_names.len() > 10 { &feature_names[..10] } else { &feature_names });
+
+        println!(
+            "Found {} features and {} samples",
+            feature_names.len(),
+            samples.len()
+        );
+        println!(
+            "Features (first 10): {:?}",
+            if feature_names.len() > 10 {
+                &feature_names[..10]
+            } else {
+                &feature_names
+            }
+        );
         println!("Samples: {:?}", sample_names);
-        
+
         // Create NewDistUniFrac - this will test if feature names match tree
         println!("\nCreating NewDistUniFrac instance...");
         let dist_unifrac = match NewDistUniFrac::new(&newick_str, false, feature_names.clone()) {
@@ -3167,231 +3447,319 @@ mod tests {
                 println!("1. Check that feature names in data match leaf names in tree exactly");
                 println!("2. Tree format should be valid Newick");
                 println!("3. Feature names are case-sensitive");
-                
+
                 // Show first few feature names for debugging
-                println!("\nFirst 5 features from data: {:?}", &feature_names[..feature_names.len().min(5)]);
+                println!(
+                    "\nFirst 5 features from data: {:?}",
+                    &feature_names[..feature_names.len().min(5)]
+                );
                 return;
             }
         };
-        
+
         // Compute sample distances (limit to first few samples for test)
         println!("\nComputing UniFrac distances...");
         let max_samples = samples.len().min(5); // Limit for test performance
-        
+
         for i in 0..max_samples {
             for j in (i + 1)..max_samples {
                 let distance = dist_unifrac.eval(&samples[i], &samples[j]);
-                println!("  {} vs {}: {:.6}", sample_names[i], sample_names[j], distance);
-                
+                println!(
+                    "  {} vs {}: {:.6}",
+                    sample_names[i], sample_names[j], distance
+                );
+
                 // Validate distance properties
-                assert!(distance >= 0.0 && distance <= 1.0, 
-                       "Distance out of range [0,1]: {}", distance);
+                assert!(
+                    distance >= 0.0 && distance <= 1.0,
+                    "Distance out of range [0,1]: {}",
+                    distance
+                );
             }
         }
-        
+
         // Test self-distance
         if !samples.is_empty() {
             let self_distance = dist_unifrac.eval(&samples[0], &samples[0]);
             println!("\nSelf-distance test: {:.8}", self_distance);
             assert!(self_distance.abs() < 1e-6, "Self-distance should be ~0");
         }
-        
+
         println!("\nMouse gut microbiome UniFrac analysis completed successfully!");
     }
 
     #[test]
     fn test_new_dist_unifrac_api_compatibility() {
         init_log();
-        
+
         // Test the exact function call pattern mentioned in the requirements
         let newick_str = "((T1:0.1,T2:0.2):0.05,(T3:0.3,T4:0.4):0.1):0.0;";
         let weighted = false;
-        let feature_names = vec!["T1".to_string(), "T2".to_string(), "T3".to_string(), "T4".to_string()];
-        
+        let feature_names = vec![
+            "T1".to_string(),
+            "T2".to_string(),
+            "T3".to_string(),
+            "T4".to_string(),
+        ];
+
         // This should work exactly as specified
         let dist_unifrac = NewDistUniFrac::new(&newick_str, weighted, feature_names.clone());
         assert!(dist_unifrac.is_ok(), "API compatibility test failed");
-        
+
         let unifrac = dist_unifrac.unwrap();
-        
+
         // Test feature access methods
         assert_eq!(unifrac.feature_names(), &feature_names);
         assert_eq!(unifrac.num_features(), 4);
-        
+
         // Test evaluation
         let va = vec![1.0, 0.0, 1.0, 0.0];
         let vb = vec![0.0, 1.0, 0.0, 1.0];
         let distance = unifrac.eval(&va, &vb);
-        
-        assert!(distance >= 0.0 && distance <= 1.0, "Distance should be normalized between 0 and 1");
+
+        assert!(
+            distance >= 0.0 && distance <= 1.0,
+            "Distance should be normalized between 0 and 1"
+        );
     }
 
     #[test]
     fn test_new_dist_unifrac_large_tree() {
         init_log();
-        
+
         // Larger tree with more taxa - basic validation
         let newick_str = "(((T1:0.1,T2:0.1):0.05,(T3:0.1,T4:0.1):0.05):0.1,((T5:0.1,T6:0.1):0.05,(T7:0.1,T8:0.1):0.05):0.1):0.0;";
         let feature_names = vec![
-            "T1".to_string(), "T2".to_string(), "T3".to_string(), "T4".to_string(),
-            "T5".to_string(), "T6".to_string(), "T7".to_string(), "T8".to_string()
+            "T1".to_string(),
+            "T2".to_string(),
+            "T3".to_string(),
+            "T4".to_string(),
+            "T5".to_string(),
+            "T6".to_string(),
+            "T7".to_string(),
+            "T8".to_string(),
         ];
-        
+
         let new_dist = NewDistUniFrac::new(newick_str, false, feature_names.clone()).unwrap();
-        
+
         // Test completely different clades
         let va = vec![1.0, 1.0, 1.0, 1.0, 0.0, 0.0, 0.0, 0.0]; // First 4 taxa
         let vb = vec![0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0]; // Last 4 taxa
-        
+
         let new_distance = new_dist.eval(&va, &vb);
-        
-        println!("Large tree different clades - NewDistUniFrac: {}", new_distance);
-        assert!(new_distance >= 0.0 && new_distance <= 1.0, 
-            "NewDistUniFrac distance ({}) should be between 0.0 and 1.0", new_distance);
-        
+
+        println!(
+            "Large tree different clades - NewDistUniFrac: {}",
+            new_distance
+        );
+        assert!(
+            new_distance >= 0.0 && new_distance <= 1.0,
+            "NewDistUniFrac distance ({}) should be between 0.0 and 1.0",
+            new_distance
+        );
+
         // Test overlapping samples
         let vc = vec![1.0, 1.0, 0.0, 0.0, 1.0, 1.0, 0.0, 0.0]; // Mixed across clades
         let new_distance2 = new_dist.eval(&va, &vc);
-        
+
         println!("Large tree overlapping - NewDistUniFrac: {}", new_distance2);
-        assert!(new_distance2 >= 0.0 && new_distance2 <= 1.0, 
-            "NewDistUniFrac distance ({}) should be between 0.0 and 1.0", new_distance2);
-        
+        assert!(
+            new_distance2 >= 0.0 && new_distance2 <= 1.0,
+            "NewDistUniFrac distance ({}) should be between 0.0 and 1.0",
+            new_distance2
+        );
+
         // Verify distance ordering is preserved
-        assert!(new_distance2 < new_distance, 
-            "Overlapping samples should have smaller distance ({} < {})", new_distance2, new_distance);
+        assert!(
+            new_distance2 < new_distance,
+            "Overlapping samples should have smaller distance ({} < {})",
+            new_distance2,
+            new_distance
+        );
     }
 
     #[test]
     fn test_new_dist_unifrac_succparen_patterns() {
         init_log();
-        
+
         // Test that our implementation follows succparen patterns correctly
         let newick_str = "((T1:0.2,T2:0.3):0.1,(T3:0.4,T4:0.5):0.2):0.0;";
-        let feature_names = vec!["T1".to_string(), "T2".to_string(), "T3".to_string(), "T4".to_string()];
-        
+        let feature_names = vec![
+            "T1".to_string(),
+            "T2".to_string(),
+            "T3".to_string(),
+            "T4".to_string(),
+        ];
+
         let dist_unifrac = NewDistUniFrac::new(newick_str, false, feature_names).unwrap();
-        
+
         // Verify internal structure is built correctly
-        assert!(dist_unifrac.post.len() > 0, "Post-order traversal should be populated");
-        assert!(dist_unifrac.kids.len() > 0, "Children arrays should be populated");
-        assert!(dist_unifrac.lens.len() > 0, "Branch lengths should be populated");
+        assert!(
+            dist_unifrac.post.len() > 0,
+            "Post-order traversal should be populated"
+        );
+        assert!(
+            dist_unifrac.kids.len() > 0,
+            "Children arrays should be populated"
+        );
+        assert!(
+            dist_unifrac.lens.len() > 0,
+            "Branch lengths should be populated"
+        );
         assert_eq!(dist_unifrac.leaf_ids.len(), 4, "Should have 4 leaf IDs");
-        
+
         // Test distance computation
         let va = vec![1.0, 0.0, 0.0, 0.0];
         let vb = vec![0.0, 1.0, 0.0, 0.0];
         let distance = dist_unifrac.eval(&va, &vb);
-        
+
         // Distance should be positive and reasonable
-        assert!(distance > 0.0 && distance < 1.0, "Distance should be in valid range, got {}", distance);
+        assert!(
+            distance > 0.0 && distance < 1.0,
+            "Distance should be in valid range, got {}",
+            distance
+        );
     }
 
     #[test]
     fn test_new_dist_unifrac_bitvec_conversion() {
         init_log();
-        
+
         let newick_str = "((T1:0.1,T2:0.2):0.05,(T3:0.3,T4:0.4):0.1):0.0;";
-        let feature_names = vec!["T1".to_string(), "T2".to_string(), "T3".to_string(), "T4".to_string()];
-        
+        let feature_names = vec![
+            "T1".to_string(),
+            "T2".to_string(),
+            "T3".to_string(),
+            "T4".to_string(),
+        ];
+
         let new_dist = NewDistUniFrac::new(newick_str, false, feature_names.clone()).unwrap();
-        let new_dist = NewDistUniFrac::new(newick_str, false, feature_names.clone()).unwrap();
-        
+
         // Test presence/absence conversion with varying abundances
         let va = vec![0.5, 0.0, 1.5, 0.0]; // T1 and T3 present (> 0)
         let vb = vec![0.0, 2.0, 0.0, 0.1]; // T2 and T4 present (> 0)
-        
+
         let new_distance = new_dist.eval(&va, &vb);
-        
+
         println!("Bitvec conversion - NewDistUniFrac: {}", new_distance);
-        assert!(new_distance >= 0.0 && new_distance <= 1.0, 
-            "NewDistUniFrac distance ({}) should be between 0.0 and 1.0", new_distance);
-        
+        assert!(
+            new_distance >= 0.0 && new_distance <= 1.0,
+            "NewDistUniFrac distance ({}) should be between 0.0 and 1.0",
+            new_distance
+        );
+
         // Test with very small positive values
         let vc = vec![0.0001, 0.0, 0.0001, 0.0]; // Very small positive values
-        let vd = vec![0.0, 0.0001, 0.0, 0.0001]; 
-        
+        let vd = vec![0.0, 0.0001, 0.0, 0.0001];
+
         let new_distance2 = new_dist.eval(&vc, &vd);
-        
+
         println!("Small values - NewDistUniFrac: {}", new_distance2);
-        assert!(new_distance2 >= 0.0 && new_distance2 <= 1.0, 
-            "NewDistUniFrac distance ({}) should be between 0.0 and 1.0", new_distance2);
-        
+        assert!(
+            new_distance2 >= 0.0 && new_distance2 <= 1.0,
+            "NewDistUniFrac distance ({}) should be between 0.0 and 1.0",
+            new_distance2
+        );
+
         // Both should give same result (presence/absence only matters)
-        assert!((new_distance - new_distance2).abs() < 1e-6, 
-            "Distance should only depend on presence/absence, got {} vs {}", new_distance, new_distance2);
+        assert!(
+            (new_distance - new_distance2).abs() < 1e-6,
+            "Distance should only depend on presence/absence, got {} vs {}",
+            new_distance,
+            new_distance2
+        );
     }
 
     #[test]
     fn test_new_dist_unifrac_symmetry() {
         init_log();
-        
+
         let newick_str = "((T1:0.1,T2:0.2):0.05,(T3:0.3,T4:0.4):0.1):0.0;";
-        let feature_names = vec!["T1".to_string(), "T2".to_string(), "T3".to_string(), "T4".to_string()];
-        
+        let feature_names = vec![
+            "T1".to_string(),
+            "T2".to_string(),
+            "T3".to_string(),
+            "T4".to_string(),
+        ];
+
         let dist_unifrac = NewDistUniFrac::new(newick_str, false, feature_names).unwrap();
-        
+
         // Test that distance is symmetric: d(A,B) = d(B,A)
         let va = vec![1.0, 0.0, 1.0, 0.0];
         let vb = vec![0.0, 1.0, 0.0, 1.0];
-        
+
         let distance_ab = dist_unifrac.eval(&va, &vb);
         let distance_ba = dist_unifrac.eval(&vb, &va);
-        
-        assert!((distance_ab - distance_ba).abs() < 1e-10, 
-                "Distance should be symmetric: d(A,B)={}, d(B,A)={}", distance_ab, distance_ba);
+
+        assert!(
+            (distance_ab - distance_ba).abs() < 1e-10,
+            "Distance should be symmetric: d(A,B)={}, d(B,A)={}",
+            distance_ab,
+            distance_ba
+        );
     }
 
     #[test]
     fn test_new_dist_unifrac_triangle_inequality() {
         init_log();
-        
+
         let newick_str = "((T1:0.1,T2:0.2):0.05,(T3:0.3,T4:0.4):0.1):0.0;";
-        let feature_names = vec!["T1".to_string(), "T2".to_string(), "T3".to_string(), "T4".to_string()];
-        
+        let feature_names = vec![
+            "T1".to_string(),
+            "T2".to_string(),
+            "T3".to_string(),
+            "T4".to_string(),
+        ];
+
         let dist_unifrac = NewDistUniFrac::new(newick_str, false, feature_names).unwrap();
-        
+
         // Test triangle inequality: d(A,C) <= d(A,B) + d(B,C)
         let va = vec![1.0, 0.0, 0.0, 0.0]; // Only T1
-        let vb = vec![0.0, 1.0, 0.0, 0.0]; // Only T2  
+        let vb = vec![0.0, 1.0, 0.0, 0.0]; // Only T2
         let vc = vec![0.0, 0.0, 1.0, 0.0]; // Only T3
-        
+
         let d_ab = dist_unifrac.eval(&va, &vb);
         let d_bc = dist_unifrac.eval(&vb, &vc);
         let d_ac = dist_unifrac.eval(&va, &vc);
-        
+
         println!("d(A,B) = {}, d(B,C) = {}, d(A,C) = {}", d_ab, d_bc, d_ac);
-        
+
         // Triangle inequality: d(A,C) <= d(A,B) + d(B,C)
-        assert!(d_ac <= d_ab + d_bc + 1e-10, 
-                "Triangle inequality violated: d(A,C)={} > d(A,B)+d(B,C)={}", 
-                d_ac, d_ab + d_bc);
+        assert!(
+            d_ac <= d_ab + d_bc + 1e-10,
+            "Triangle inequality violated: d(A,C)={} > d(A,B)+d(B,C)={}",
+            d_ac,
+            d_ab + d_bc
+        );
     }
 
     #[test]
     fn test_new_dist_unifrac_distance_trait_usage() {
         use std::fs;
-        
+
         init_log();
-        
+
         // Same data as your mouse gut test
         let tree_file = "data/Mouse_gut_zotu_aligned.tre";
         let counts_file = "data/Mouse_gut_zotu_counts.txt";
-        
-        if !std::path::Path::new(tree_file).exists() || !std::path::Path::new(counts_file).exists() {
+
+        if !std::path::Path::new(tree_file).exists() || !std::path::Path::new(counts_file).exists()
+        {
             println!("Data files not found, skipping test");
             return;
         }
-        
+
         // Read your real data
         let tree_content = fs::read_to_string(tree_file).unwrap();
         let data_content = fs::read_to_string(counts_file).unwrap();
         let lines: Vec<&str> = data_content.lines().collect();
-        
+
         // Helper function to parse counts/OTU table format
         fn parse_counts_format(lines: &[&str]) -> (Vec<String>, Vec<Vec<f32>>, Vec<String>) {
-            if lines.is_empty() { return (vec![], vec![], vec![]); }
-            
+            if lines.is_empty() {
+                return (vec![], vec![], vec![]);
+            }
+
             let mut header_idx = 0;
             for (i, line) in lines.iter().enumerate() {
                 if line.starts_with('#') || line.contains('\t') || line.contains(',') {
@@ -3399,27 +3767,35 @@ mod tests {
                     break;
                 }
             }
-            
+
             let header = lines[header_idx].trim_start_matches('#').trim();
             let separator = if header.contains('\t') { '\t' } else { ',' };
-            
+
             let parts: Vec<&str> = header.split(separator).collect();
-            if parts.len() < 2 { return (vec![], vec![], vec![]); }
-            
-            let sample_names: Vec<String> = parts[1..].iter().map(|s| s.trim().to_string()).collect();
+            if parts.len() < 2 {
+                return (vec![], vec![], vec![]);
+            }
+
+            let sample_names: Vec<String> =
+                parts[1..].iter().map(|s| s.trim().to_string()).collect();
             let mut feature_names = Vec::new();
             let mut all_samples: Vec<Vec<f32>> = vec![vec![]; sample_names.len()];
-            
+
             for line in lines.iter().skip(header_idx + 1) {
                 let line = line.trim();
-                if line.is_empty() || line.starts_with('#') { continue; }
-                
+                if line.is_empty() || line.starts_with('#') {
+                    continue;
+                }
+
                 let parts: Vec<&str> = line.split(separator).collect();
-                if parts.len() != sample_names.len() + 1 { continue; }
-                
+                if parts.len() != sample_names.len() + 1 {
+                    continue;
+                }
+
                 let feature_name = parts[0].trim().to_string();
-                let values: Result<Vec<f32>, _> = parts[1..].iter().map(|s| s.trim().parse::<f32>()).collect();
-                
+                let values: Result<Vec<f32>, _> =
+                    parts[1..].iter().map(|s| s.trim().parse::<f32>()).collect();
+
                 if let Ok(vals) = values {
                     feature_names.push(feature_name);
                     for (i, val) in vals.into_iter().enumerate() {
@@ -3427,68 +3803,132 @@ mod tests {
                     }
                 }
             }
-            
+
             let samples: Vec<Vec<f32>> = all_samples;
             (feature_names, samples, sample_names)
         }
-        
+
         let (feature_names, samples, sample_names) = parse_counts_format(&lines);
-        
+
         if feature_names.is_empty() || samples.is_empty() {
             println!("No valid data found");
             return;
         }
-        
+
         // Create NewDistUniFrac
         let dist_unifrac = NewDistUniFrac::new(&tree_content, false, feature_names).unwrap();
-        
+
         println!("=== Using Distance Trait to Get Same Numbers ===");
-        
+
         // METHOD 1: Direct Distance trait usage
         let distance_trait: &dyn Distance<f32> = &dist_unifrac;
-        
+
         if samples.len() >= 4 {
             println!("Direct Distance Trait Usage:");
-            println!("   {} vs {}: {:.6}", sample_names[0], sample_names[1], distance_trait.eval(&samples[0], &samples[1]));
-            println!("   {} vs {}: {:.6}", sample_names[0], sample_names[2], distance_trait.eval(&samples[0], &samples[2]));
-            println!("   {} vs {}: {:.6}", sample_names[0], sample_names[3], distance_trait.eval(&samples[0], &samples[3]));
-            println!("   Self-distance ({} vs {}): {:.8}", sample_names[0], sample_names[0], distance_trait.eval(&samples[0], &samples[0]));
+            println!(
+                "   {} vs {}: {:.6}",
+                sample_names[0],
+                sample_names[1],
+                distance_trait.eval(&samples[0], &samples[1])
+            );
+            println!(
+                "   {} vs {}: {:.6}",
+                sample_names[0],
+                sample_names[2],
+                distance_trait.eval(&samples[0], &samples[2])
+            );
+            println!(
+                "   {} vs {}: {:.6}",
+                sample_names[0],
+                sample_names[3],
+                distance_trait.eval(&samples[0], &samples[3])
+            );
+            println!(
+                "   Self-distance ({} vs {}): {:.8}",
+                sample_names[0],
+                sample_names[0],
+                distance_trait.eval(&samples[0], &samples[0])
+            );
         }
-        
+
         println!();
-        
+
         // METHOD 2: Generic function using Distance trait
         fn calculate_distances<D: Distance<f32>>(
-            dist: &D, 
-            samples: &[Vec<f32>], 
-            sample_names: &[String]
+            dist: &D,
+            samples: &[Vec<f32>],
+            sample_names: &[String],
         ) {
             println!(" Generic Function with Distance Trait:");
             if samples.len() >= 4 {
-                println!("   {} vs {}: {:.6}", sample_names[0], sample_names[1], dist.eval(&samples[0], &samples[1]));
-                println!("   {} vs {}: {:.6}", sample_names[0], sample_names[2], dist.eval(&samples[0], &samples[2]));
-                println!("   {} vs {}: {:.6}", sample_names[0], sample_names[3], dist.eval(&samples[0], &samples[3]));
-                println!("   Self-distance ({} vs {}): {:.8}", sample_names[0], sample_names[0], dist.eval(&samples[0], &samples[0]));
+                println!(
+                    "   {} vs {}: {:.6}",
+                    sample_names[0],
+                    sample_names[1],
+                    dist.eval(&samples[0], &samples[1])
+                );
+                println!(
+                    "   {} vs {}: {:.6}",
+                    sample_names[0],
+                    sample_names[2],
+                    dist.eval(&samples[0], &samples[2])
+                );
+                println!(
+                    "   {} vs {}: {:.6}",
+                    sample_names[0],
+                    sample_names[3],
+                    dist.eval(&samples[0], &samples[3])
+                );
+                println!(
+                    "   Self-distance ({} vs {}): {:.8}",
+                    sample_names[0],
+                    sample_names[0],
+                    dist.eval(&samples[0], &samples[0])
+                );
             }
         }
-        
+
         calculate_distances(&dist_unifrac, &samples, &sample_names);
-        
+
         println!();
-        
+
         // METHOD 3: Polymorphic usage - can work with ANY Distance implementation
-        fn process_with_any_distance<D: Distance<f32>>(distance_impl: D, data: &[Vec<f32>], names: &[String]) {
+        fn process_with_any_distance<D: Distance<f32>>(
+            distance_impl: D,
+            data: &[Vec<f32>],
+            names: &[String],
+        ) {
             println!("Polymorphic Distance Usage:");
             if data.len() >= 4 {
-                println!("   {} vs {}: {:.6}", names[0], names[1], distance_impl.eval(&data[0], &data[1]));
-                println!("   {} vs {}: {:.6}", names[0], names[2], distance_impl.eval(&data[0], &data[2]));
-                println!("   {} vs {}: {:.6}", names[0], names[3], distance_impl.eval(&data[0], &data[3]));
-                println!("   Self-distance ({} vs {}): {:.8}", names[0], names[0], distance_impl.eval(&data[0], &data[0]));
+                println!(
+                    "   {} vs {}: {:.6}",
+                    names[0],
+                    names[1],
+                    distance_impl.eval(&data[0], &data[1])
+                );
+                println!(
+                    "   {} vs {}: {:.6}",
+                    names[0],
+                    names[2],
+                    distance_impl.eval(&data[0], &data[2])
+                );
+                println!(
+                    "   {} vs {}: {:.6}",
+                    names[0],
+                    names[3],
+                    distance_impl.eval(&data[0], &data[3])
+                );
+                println!(
+                    "   Self-distance ({} vs {}): {:.8}",
+                    names[0],
+                    names[0],
+                    distance_impl.eval(&data[0], &data[0])
+                );
             }
         }
-        
+
         process_with_any_distance(dist_unifrac, &samples, &sample_names);
-        
+
         println!();
         println!("All methods produce identical results using the Distance trait!");
     }
