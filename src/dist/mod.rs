@@ -19,6 +19,10 @@ pub use probability::*;
 pub mod set;
 pub use set::*;
 
+// String distances
+pub mod string;
+pub use string::*;
+
 pub mod distances;
 pub use distances::*;
 /// std simd distances
