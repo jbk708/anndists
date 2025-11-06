@@ -1,6 +1,6 @@
 // Example: How to get the same numbers using Distance trait
 
-use anndists::dist::distances::{NewDistUniFrac, Distance};
+use anndists::dist::{NewDistUniFrac, Distance};
 
 fn main() {
     // Simple example showing Distance trait usage

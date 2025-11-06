@@ -1,4 +1,4 @@
-use anndists::dist::distances::{NewDistUniFrac, Distance};
+use anndists::dist::{NewDistUniFrac, Distance};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Same setup
