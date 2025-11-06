@@ -1,7 +1,7 @@
 // Example: Testing NewDistUniFrac with tree and CSV files
 // Place this file in examples/ directory and run with: cargo run --example test_unifrac_files
 
-use anndists::dist::distances::{Distance, NewDistUniFrac};
+use anndists::dist::{Distance, NewDistUniFrac};
 use std::env;
 use std::fs;
 use std::path::Path;
