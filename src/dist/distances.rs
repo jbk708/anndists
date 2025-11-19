@@ -22,10 +22,9 @@ mod tests {
     use super::super::traits::Distance;
     use super::*;
     use env_logger::Env;
-    
+
     use std::ffi::CString;
     use std::os::raw::{c_char, c_ulonglong};
-    
 
     fn init_log() -> u64 {
         let mut builder = env_logger::Builder::from_default_env();
@@ -847,7 +846,6 @@ mod tests {
     #[test]
     fn test_new_dist_unifrac_ground_truth_validation() {
         use std::fs;
-        
 
         let _ = env_logger::Builder::from_env(Env::default().default_filter_or("debug"))
             .is_test(true)
