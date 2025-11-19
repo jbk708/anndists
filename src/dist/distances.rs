@@ -1374,11 +1374,20 @@ mod tests {
         println!("Weighted distance: {}", dist_wt);
 
         // Both should produce valid distances
-        assert!(dist_unwt >= 0.0 && dist_unwt <= 1.0, "Unweighted distance should be in [0, 1]");
-        assert!(dist_wt >= 0.0 && dist_wt <= 1.0, "Weighted distance should be in [0, 1]");
-        assert!(dist_unwt.is_finite(), "Unweighted distance should be finite");
+        assert!(
+            dist_unwt >= 0.0 && dist_unwt <= 1.0,
+            "Unweighted distance should be in [0, 1]"
+        );
+        assert!(
+            dist_wt >= 0.0 && dist_wt <= 1.0,
+            "Weighted distance should be in [0, 1]"
+        );
+        assert!(
+            dist_unwt.is_finite(),
+            "Unweighted distance should be finite"
+        );
         assert!(dist_wt.is_finite(), "Weighted distance should be finite");
-        
+
         // For these test vectors, weighted and unweighted should generally differ
         // (unless by coincidence they're the same)
         // Unweighted converts to binary, so both samples have T1 and T3 present -> distance 0
@@ -1386,7 +1395,10 @@ mod tests {
         // So we expect them to be different in this case
         if dist_unwt != dist_wt {
             // This is expected - they should differ when abundances differ
-            assert!(dist_wt > dist_unwt || dist_unwt > dist_wt, "Distances should differ when abundances differ");
+            assert!(
+                dist_wt > dist_unwt || dist_unwt > dist_wt,
+                "Distances should differ when abundances differ"
+            );
         }
     }
 
