@@ -20,8 +20,7 @@ use succparen::{
 };
 
 // for DistUniFrac_C FFI
-use std::os::raw::{c_char, c_double, c_uint, c_ulonglong};
-use std::slice;
+use std::os::raw::{c_char, c_double, c_uint};
 
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 use std::arch::x86_64::*;
@@ -38,10 +37,12 @@ pub struct DistUniFrac {
     /// Postorder nodes
     nodes_in_order: Vec<usize>,
     /// node_name_map[node_in_order_idx] = Some("T4") or whatever
+    #[allow(dead_code)]
     node_name_map: Vec<Option<String>>,
     /// leaf_map: "T4" -> postorder index
     leaf_map: HashMap<String, usize>,
     /// total tree length (not used to normalize in this example)
+    #[allow(dead_code)]
     total_tree_length: f32,
     /// Feature names in the same order as va,vb
     feature_names: Vec<String>,
@@ -175,6 +176,7 @@ fn build_leaf_map(
 }
 
 // Helper function to extract leaf names from newick string without phylotree dependency
+#[allow(dead_code)]
 fn extract_leaf_names_from_newick_string(newick_str: &str) -> Result<Vec<String>> {
     let mut leaf_names = Vec::new();
 
@@ -454,6 +456,7 @@ impl Distance<f32> for NewDistUniFrac {
 }
 
 /// UniFrac using succparen tree structure with shared/union logic (like unifrac_pair)
+#[allow(dead_code)]
 fn unifrac_succparen_normalized(
     post: &[usize],
     kids: &[Vec<usize>],
@@ -675,6 +678,7 @@ pub(crate) fn unifrac_pair_weighted(
 // --- SuccTrav and collect_children code copied from unifrac_bp ---
 
 /// SuccTrav for BalancedParensTree building - stores Newick node ID as label
+#[allow(dead_code)]
 struct SuccTrav<'a> {
     t: &'a NewickTree,
     stack: Vec<(usize, usize, usize)>,
@@ -682,6 +686,7 @@ struct SuccTrav<'a> {
 }
 
 impl<'a> SuccTrav<'a> {
+    #[allow(dead_code)]
     fn new(t: &'a NewickTree, lens: &'a mut Vec<f32>) -> Self {
         Self {
             t,
@@ -709,6 +714,7 @@ impl<'a> DepthFirstTraverse for SuccTrav<'a> {
     }
 }
 
+#[allow(dead_code)]
 fn collect_children<N: succparen::bitwise::ops::NndOne>(
     node: &BpNode<LabelVec<usize>, N, &BalancedParensTree<LabelVec<usize>, N>>,
     kids: &mut [Vec<usize>],
