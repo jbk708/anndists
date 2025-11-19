@@ -2,7 +2,10 @@
 
 use super::traits::Distance;
 
-#[cfg(all(feature = "simdeez_f", any(target_arch = "x86", target_arch = "x86_64")))]
+#[cfg(all(
+    feature = "simdeez_f",
+    any(target_arch = "x86", target_arch = "x86_64")
+))]
 use super::disteez::*;
 
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]

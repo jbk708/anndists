@@ -35,21 +35,21 @@ pub use unifrac::*;
 pub mod distances {
     // Re-export the Distance trait
     pub use super::traits::Distance;
-    
+
     // Re-export all distance types
     pub use super::basic::*;
+    pub use super::custom::*;
     pub use super::probability::*;
     pub use super::set::*;
     pub use super::string::*;
-    pub use super::custom::*;
     pub use super::unifrac::*;
-    
+
     // Test-only code
     #[cfg(test)]
     mod tests {
         use super::super::utils::l2_normalize;
         use super::*;
-        
+
         // Include test code here if needed
     }
 }

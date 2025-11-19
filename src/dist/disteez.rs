@@ -2,7 +2,10 @@
 //!
 //!
 
-#![cfg(all(feature = "simdeez_f", any(target_arch = "x86", target_arch = "x86_64")))]
+#![cfg(all(
+    feature = "simdeez_f",
+    any(target_arch = "x86", target_arch = "x86_64")
+))]
 use simdeez::avx2::*;
 use simdeez::sse2::*;
 use simdeez::*;
