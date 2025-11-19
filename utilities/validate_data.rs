@@ -6,7 +6,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("=" .repeat(50));
     
     // Read tree file
-    let tree_content = fs::read_to_string("data/Mouse_gut_zotu_aligned.tre")?;
+    let tree_content = fs::read_to_string("../data/Mouse_gut_zotu_aligned.tre")?;
     println!("✅ Tree file: {} characters", tree_content.len());
     
     // Validate it's Newick format
@@ -22,7 +22,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("📊 Approximate taxa count: {}", approx_taxa);
     
     // Read counts file
-    let counts_content = fs::read_to_string("data/Mouse_gut_zotu_counts.txt")?;
+    let counts_content = fs::read_to_string("../data/Mouse_gut_zotu_counts.txt")?;
     let lines: Vec<&str> = counts_content.lines().collect();
     println!("✅ Counts file: {} lines", lines.len());
     

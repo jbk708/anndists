@@ -3,7 +3,7 @@
 //
 // std simd implementations
 //
-use std::simd::{Simd, f32x16, u32x16, u64x8};
+use std::simd::{f32x16, u32x16, u64x8, Simd};
 use std::simd::{i32x16, i64x8};
 
 use std::simd::cmp::SimdPartialEq;

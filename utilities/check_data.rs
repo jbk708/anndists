@@ -5,7 +5,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("🔍 Checking data files...");
     
     // Check tree file
-    let tree_file = "data/Mouse_gut_zotu_aligned.tre";
+    let tree_file = "../data/Mouse_gut_zotu_aligned.tre";
     match fs::read_to_string(tree_file) {
         Ok(content) => {
             println!("✅ Tree file readable: {} characters", content.len());
@@ -19,7 +19,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     
     // Check counts file
-    let counts_file = "data/Mouse_gut_zotu_counts.txt";
+    let counts_file = "../data/Mouse_gut_zotu_counts.txt";
     match fs::read_to_string(counts_file) {
         Ok(content) => {
             println!("✅ Counts file readable: {} characters", content.len());

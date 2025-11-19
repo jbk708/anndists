@@ -1,3 +1,3 @@
 // gathers modules to include
 
-pub use crate::dist::distances::Distance;
+pub use crate::dist::Distance;
