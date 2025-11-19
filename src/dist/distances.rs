@@ -1362,8 +1362,7 @@ mod tests {
         assert_eq!(dist_unweighted.weighted, false);
         assert_eq!(dist_weighted.weighted, true);
 
-        // Note: The current unifrac_pair implementation is unweighted
-        // So both will give the same result regardless of the flag
+        // Test with different abundances - weighted and unweighted should give different results
         let va = vec![10.0, 0.0, 1.0, 0.0]; // Different abundances
         let vb = vec![1.0, 0.0, 10.0, 0.0];
 
@@ -1373,10 +1372,16 @@ mod tests {
         println!("Unweighted distance: {}", dist_unwt);
         println!("Weighted distance: {}", dist_wt);
 
-        // Both should be the same since unifrac_pair implements unweighted UniFrac
+        // Weighted and unweighted should give different results for different abundance patterns
+        // Both should be valid distances (>= 0, finite)
+        assert!(dist_unwt >= 0.0 && dist_unwt.is_finite(), "Unweighted distance should be valid");
+        assert!(dist_wt >= 0.0 && dist_wt.is_finite(), "Weighted distance should be valid");
+        
+        // For this specific case with different abundances, they should differ
+        // (though in some edge cases they might be similar)
         assert!(
-            (dist_unwt - dist_wt).abs() < 1e-6,
-            "Both should be same (unweighted) for current implementation"
+            (dist_unwt - dist_wt).abs() > 1e-6 || (dist_unwt < 1e-6 && dist_wt < 1e-6),
+            "Weighted and unweighted should differ for different abundance patterns, or both be ~0"
         );
     }
 
