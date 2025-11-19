@@ -5,7 +5,10 @@ use super::traits::Distance;
 #[cfg(feature = "stdsimd")]
 use super::distsimd::*;
 
-#[cfg(feature = "simdeez_f")]
+#[cfg(all(
+    feature = "simdeez_f",
+    any(target_arch = "x86", target_arch = "x86_64")
+))]
 use super::disteez::*;
 
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
@@ -48,6 +51,10 @@ impl Distance<f32> for DistL1 {
                     assert_eq!(va.len(), vb.len());
                     va.iter().zip(vb.iter()).map(|t| (*t.0 as f32- *t.1 as f32).abs()).sum()
                 }
+            }
+            #[cfg(not(any(target_arch = "x86", target_arch = "x86_64")))] {
+                assert_eq!(va.len(), vb.len());
+                va.iter().zip(vb.iter()).map(|t| (*t.0 as f32- *t.1 as f32).abs()).sum()
             }
         }
         else if #[cfg(feature = "stdsimd")] {
