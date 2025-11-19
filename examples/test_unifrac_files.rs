@@ -8,7 +8,7 @@ use std::path::Path;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("🧬 Testing NewDistUniFrac with your tree and CSV files");
-    println!("=".repeat(60));
+    println!("{}", "=".repeat(60));
 
     // Get file paths from command line or use defaults
     let args: Vec<String> = env::args().collect();
@@ -185,7 +185,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Compute distances
     println!("🔢 Computing UniFrac distances...");
-    println!("=".repeat(60));
+    println!("{}", "=".repeat(60));
 
     let num_samples = samples.len();
     let max_display = 10; // Limit output for readability
@@ -275,7 +275,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     println!();
     println!("🎉 Analysis complete!");
-    println!("=".repeat(60));
+    println!("{}", "=".repeat(60));
     println!();
 
     Ok(())
