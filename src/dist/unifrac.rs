@@ -628,36 +628,44 @@ pub(crate) fn unifrac_pair_weighted(
     va: &[f32],
     vb: &[f32],
 ) -> f64 {
+    // Edge case: empty vectors
+    if va.is_empty() || vb.is_empty() || va.len() != vb.len() {
+        return 0.0;
+    }
+
+    // Calculate sums for normalization (avoid allocating normalized vectors)
     let sum_a: f32 = va.iter().sum();
-    let normalized_a: Vec<f32> = if sum_a > 0.0 {
-        let inv_a = 1.0 / sum_a;
-        va.iter().map(|&x| x * inv_a).collect()
-    } else {
-        vec![0.0; va.len()]
-    };
     let sum_b: f32 = vb.iter().sum();
-    let normalized_b: Vec<f32> = if sum_b > 0.0 {
-        let inv_b = 1.0 / sum_b;
-        vb.iter().map(|&x| x * inv_b).collect()
-    } else {
-        vec![0.0; vb.len()]
-    };
+    
+    // Early return if both sums are zero
+    if sum_a == 0.0 && sum_b == 0.0 {
+        return 0.0;
+    }
+
+    let inv_a = if sum_a > 0.0 { 1.0 / sum_a } else { 0.0 };
+    let inv_b = if sum_b > 0.0 { 1.0 / sum_b } else { 0.0 };
 
     let num_nodes = lens.len();
-    let mut partial_sums = vec![0.0; num_nodes];
+    let mut partial_sums = vec![0.0f32; num_nodes];
 
+    // Calculate differences at leaf nodes (normalize on-the-fly to avoid allocation)
     for (i, &leaf_id) in leaf_ids.iter().enumerate() {
-        if i < normalized_a.len() && i < normalized_b.len() {
-            let diff = normalized_a[i] - normalized_b[i];
+        if i < va.len() && i < vb.len() {
+            // Normalize and compute difference in one step
+            let norm_a = va[i] * inv_a;
+            let norm_b = vb[i] * inv_b;
+            let diff = norm_a - norm_b;
+            
+            // Only store if significant (avoid tiny floating point errors)
             if diff.abs() > 1e-12 {
                 partial_sums[leaf_id] = diff;
             }
         }
     }
-    for &v in post{
+    for &v in post {
         for &c in &kids[v] {
             partial_sums[v] += partial_sums[c];
-        } 
+        }
     }
 
     let mut distance = 0.0f64;
@@ -672,7 +680,7 @@ pub(crate) fn unifrac_pair_weighted(
             total_length += branch_len;
         }
     }
-    
+
     if total_length > 0.0 {
         distance / total_length
     } else {
