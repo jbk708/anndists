@@ -433,19 +433,30 @@ impl NewDistUniFrac {
 
 impl Distance<f32> for NewDistUniFrac {
     fn eval(&self, va: &[f32], vb: &[f32]) -> f32 {
-        // Convert to bit vectors for the working unifrac_pair function
-        let a_bits: BitVec<u8, bitvec::order::Lsb0> = va.iter().map(|&x| x > 0.0).collect();
-        let b_bits: BitVec<u8, bitvec::order::Lsb0> = vb.iter().map(|&x| x > 0.0).collect();
+        if self.weighted {
+            unifrac_pair_weighted(
+                &self.post,
+                &self.kids,
+                &self.lens,
+                &self.leaf_ids,
+                va,
+                vb,
+            ) as f32
+        } else {
+            // Convert to bit vectors for the working unifrac_pair function
+            let a_bits: BitVec<u8, bitvec::order::Lsb0> = va.iter().map(|&x| x > 0.0).collect();
+            let b_bits: BitVec<u8, bitvec::order::Lsb0> = vb.iter().map(|&x| x > 0.0).collect();
 
-        // Use the proven working unifrac_pair function
-        unifrac_pair(
-            &self.post,
-            &self.kids,
-            &self.lens,
-            &self.leaf_ids,
-            &a_bits,
-            &b_bits,
-        ) as f32
+            // Use the proven working unifrac_pair function
+            unifrac_pair(
+                &self.post,
+                &self.kids,
+                &self.lens,
+                &self.leaf_ids,
+                &a_bits,
+                &b_bits,
+            ) as f32
+        }
     }
 }
 
@@ -609,7 +620,7 @@ fn unifrac_pair(
     }
 }
 
-fn unifrac_pair_weighted(
+pub(crate) fn unifrac_pair_weighted(
     post: &[usize],
     kids: &[Vec<usize>],
     lens: &[f32],
