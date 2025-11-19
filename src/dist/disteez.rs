@@ -2,12 +2,12 @@
 //!
 //!
 
-#![cfg(feature = "simdeez_f")]
+#![cfg(all(feature = "simdeez_f", any(target_arch = "x86", target_arch = "x86_64")))]
 use simdeez::avx2::*;
 use simdeez::sse2::*;
 use simdeez::*;
 
-use super::distances::M_MIN;
+use super::probability::M_MIN;
 
 pub(super) unsafe fn distance_l1_f32<S: Simd>(va: &[f32], vb: &[f32]) -> f32 {
     assert_eq!(va.len(), vb.len());
