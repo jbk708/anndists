@@ -8,7 +8,6 @@
 use super::basic::*;
 use super::custom::*;
 use super::probability::*;
-use super::set::*;
 use super::string::*;
 use super::unifrac::*;
 
@@ -23,10 +22,10 @@ mod tests {
     use super::super::traits::Distance;
     use super::*;
     use env_logger::Env;
-    use log::debug;
+    
     use std::ffi::CString;
     use std::os::raw::{c_char, c_ulonglong};
-    use std::ptr;
+    
 
     fn init_log() -> u64 {
         let mut builder = env_logger::Builder::from_default_env();
@@ -35,6 +34,7 @@ mod tests {
         return 1;
     }
     /// Helper to create a raw array of `*const c_char` for T1..T6.
+    #[allow(dead_code)]
     fn make_obs_ids() -> Vec<*mut c_char> {
         let obs = vec![
             CString::new("T1").unwrap(),
@@ -52,6 +52,7 @@ mod tests {
         c_ptrs
     }
 
+    #[allow(dead_code)]
     fn free_obs_ids(c_ptrs: &mut [*mut c_char]) {
         for &mut ptr in c_ptrs {
             if !ptr.is_null() {
@@ -846,7 +847,7 @@ mod tests {
     #[test]
     fn test_new_dist_unifrac_ground_truth_validation() {
         use std::fs;
-        use std::path::Path;
+        
 
         let _ = env_logger::Builder::from_env(Env::default().default_filter_or("debug"))
             .is_test(true)
@@ -1384,11 +1385,11 @@ mod tests {
     #[test]
     fn test_new_dist_unifrac_from_files() {
         use std::fs;
-        use std::path::Path;
 
         init_log();
 
         // Use the counts file since it contains the actual feature data we need for UniFrac
+        use std::path::Path;
         let tree_file = "data/Mouse_gut_zotu_aligned.tre";
         let counts_file = "data/Mouse_gut_zotu_counts.txt";
 
