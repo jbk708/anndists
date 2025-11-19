@@ -609,6 +609,65 @@ fn unifrac_pair(
     }
 }
 
+fn unifrac_pair_weighted(
+    post: &[usize],
+    kids: &[Vec<usize>],
+    lens: &[f32],
+    leaf_ids: &[usize],
+    va: &[f32],
+    vb: &[f32],
+) -> f64 {
+    let sum_a: f32 = va.iter().sum();
+    let normalized_a: Vec<f32> = if sum_a > 0.0 {
+        let inv_a = 1.0 / sum_a;
+        va.iter().map(|&x| x * inv_a).collect()
+    } else {
+        vec![0.0; va.len()]
+    };
+    let sum_b: f32 = vb.iter().sum();
+    let normalized_b: Vec<f32> = if sum_b > 0.0 {
+        let inv_b = 1.0 / sum_b;
+        vb.iter().map(|&x| x * inv_b).collect()
+    } else {
+        vec![0.0; vb.len()]
+    };
+
+    let num_nodes = lens.len();
+    let mut partial_sums = vec![0.0; num_nodes];
+
+    for (i, &leaf_id) in leaf_ids.iter().enumerate() {
+        if i < normalized_a.len() && i < normalized_b.len() {
+            let diff = normalized_a[i] - normalized_b[i];
+            if diff.abs() > 1e-12 {
+                partial_sums[leaf_id] = diff;
+            }
+        }
+    }
+    for &v in post{
+        for &c in &kids[v] {
+            partial_sums[v] += partial_sums[c];
+        } 
+    }
+
+    let mut distance = 0.0f64;
+    let mut total_length = 0.0f64;
+
+    for &node_id in post {
+        let diff = partial_sums[node_id] as f64;
+        let branch_len = lens[node_id] as f64;
+
+        if branch_len > 0.0 {
+            distance += diff.abs() * branch_len;
+            total_length += branch_len;
+        }
+    }
+    
+    if total_length > 0.0 {
+        distance / total_length
+    } else {
+        0.0
+    }
+}
 // --- SuccTrav and collect_children code copied from unifrac_bp ---
 
 /// SuccTrav for BalancedParensTree building - stores Newick node ID as label
