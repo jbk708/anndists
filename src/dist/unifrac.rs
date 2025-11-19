@@ -434,14 +434,7 @@ impl NewDistUniFrac {
 impl Distance<f32> for NewDistUniFrac {
     fn eval(&self, va: &[f32], vb: &[f32]) -> f32 {
         if self.weighted {
-            unifrac_pair_weighted(
-                &self.post,
-                &self.kids,
-                &self.lens,
-                &self.leaf_ids,
-                va,
-                vb,
-            ) as f32
+            unifrac_pair_weighted(&self.post, &self.kids, &self.lens, &self.leaf_ids, va, vb) as f32
         } else {
             // Convert to bit vectors for the working unifrac_pair function
             let a_bits: BitVec<u8, bitvec::order::Lsb0> = va.iter().map(|&x| x > 0.0).collect();
@@ -654,10 +647,10 @@ pub(crate) fn unifrac_pair_weighted(
             }
         }
     }
-    for &v in post{
+    for &v in post {
         for &c in &kids[v] {
             partial_sums[v] += partial_sums[c];
-        } 
+        }
     }
 
     let mut distance = 0.0f64;
@@ -672,7 +665,7 @@ pub(crate) fn unifrac_pair_weighted(
             total_length += branch_len;
         }
     }
-    
+
     if total_length > 0.0 {
         distance / total_length
     } else {

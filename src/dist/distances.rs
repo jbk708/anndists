@@ -1,15 +1,15 @@
 //! Test module for distance implementations.
-//! 
+//!
 //! This module contains comprehensive tests for all distance implementations
 //! that have been refactored into separate modules (basic, probability, set,
 //! string, custom, unifrac).
 
 // Import all distance implementations for testing
 use super::basic::*;
+use super::custom::*;
 use super::probability::*;
 use super::set::*;
 use super::string::*;
-use super::custom::*;
 use super::unifrac::*;
 
 // Import utility functions from utils module
@@ -19,9 +19,9 @@ use super::utils::l2_normalize;
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use super::super::traits::Distance;
     use super::super::set::{DistHamming, DistJaccard};
+    use super::super::traits::Distance;
+    use super::*;
     use env_logger::Env;
     use log::debug;
     use std::ffi::CString;
@@ -2045,7 +2045,6 @@ mod tests {
         println!("All methods produce identical results using the Distance trait!");
     }
 
-
     #[test]
     fn test_unifrac_pair_weighted() {
         // Simple tree structure:
@@ -2055,43 +2054,43 @@ mod tests {
         //  / \ / \
         // 3  4 5  6 (leaves, length 0.5 each)
         // Leaves: 3, 4, 5, 6
-        
+
         // Post-order traversal: [3, 4, 1, 5, 6, 2, 0]
         let post = vec![3, 4, 1, 5, 6, 2, 0];
-        
+
         // Children for each node: node 0 has [1, 2], node 1 has [3, 4], node 2 has [5, 6]
         // Index corresponds to node ID
         let kids = vec![
-            vec![1, 2],  // node 0
-            vec![3, 4],  // node 1
-            vec![5, 6],  // node 2
-            vec![],      // node 3 (leaf)
-            vec![],      // node 4 (leaf)
-            vec![],      // node 5 (leaf)
-            vec![],      // node 6 (leaf)
+            vec![1, 2], // node 0
+            vec![3, 4], // node 1
+            vec![5, 6], // node 2
+            vec![],     // node 3 (leaf)
+            vec![],     // node 4 (leaf)
+            vec![],     // node 5 (leaf)
+            vec![],     // node 6 (leaf)
         ];
-        
+
         // Branch lengths (one per node)
         let lens = vec![0.0, 1.0, 1.0, 0.5, 0.5, 0.5, 0.5];
-        
+
         // Leaf IDs (indices in va/vb correspond to these leaf IDs)
         let leaf_ids = vec![3, 4, 5, 6];
-        
+
         // Abundance vectors for two samples
         // Sample A: [1.0, 2.0, 3.0, 4.0] -> normalized: [0.1, 0.2, 0.3, 0.4]
         let va = vec![1.0, 2.0, 3.0, 4.0];
-        
+
         // Sample B: [2.0, 2.0, 2.0, 2.0] -> normalized: [0.25, 0.25, 0.25, 0.25]
         let vb = vec![2.0, 2.0, 2.0, 2.0];
-        
+
         let result = unifrac_pair_weighted(&post, &kids, &lens, &leaf_ids, &va, &vb);
-        
+
         // Verify the function returns a valid distance
         // Distance should be between 0.0 and 1.0 (normalized)
         assert!(result >= 0.0);
         assert!(result <= 1.0);
         assert!(result.is_finite());
-        
+
         // With different distributions, distance should be > 0
         assert!(result > 0.0);
     }
@@ -2107,9 +2106,9 @@ mod tests {
         let leaf_ids = vec![0, 1];
         let va = vec![0.0, 0.0];
         let vb = vec![1.0, 1.0];
-        
+
         let result = unifrac_pair_weighted(&post, &kids, &lens, &leaf_ids, &va, &vb);
-        
+
         // Should have non-zero distance when one sample is zero and other is not
         // But if total_length is 0.0 (all branches zero), returns 0.0
         assert!(result >= 0.0);
@@ -2124,9 +2123,9 @@ mod tests {
         let leaf_ids = vec![0];
         let va = vec![1.0, 1.0];
         let vb = vec![0.0, 0.0];
-        
+
         let result = unifrac_pair_weighted(&post, &kids, &lens, &leaf_ids, &va, &vb);
-        
+
         assert!(result >= 0.0);
         assert!(result.is_finite());
     }
@@ -2140,9 +2139,9 @@ mod tests {
         let leaf_ids = vec![0];
         let va = vec![0.0, 0.0];
         let vb = vec![0.0, 0.0];
-        
+
         let result = unifrac_pair_weighted(&post, &kids, &lens, &leaf_ids, &va, &vb);
-        
+
         // Zero abundance in both should result in zero distance
         // Note: If total_length is 0.0, function returns 0.0
         assert_eq!(result, 0.0);
@@ -2157,9 +2156,9 @@ mod tests {
         let leaf_ids = vec![0, 1];
         let va = vec![1.0, 1.0];
         let vb = vec![1.0, 1.0];
-        
+
         let result = unifrac_pair_weighted(&post, &kids, &lens, &leaf_ids, &va, &vb);
-        
+
         // Identical normalized abundances should result in zero distance
         assert_eq!(result, 0.0);
     }
@@ -2174,17 +2173,19 @@ mod tests {
         let kids = vec![vec![0, 1], vec![], vec![]];
         let lens = vec![0.0, 1.0, 1.0];
         let leaf_ids = vec![0, 1];
-        
+
         // Small scale
         let va_small = vec![1.0, 2.0];
         let vb_small = vec![1.0, 2.0];
-        let result_small = unifrac_pair_weighted(&post, &kids, &lens, &leaf_ids, &va_small, &vb_small);
-        
+        let result_small =
+            unifrac_pair_weighted(&post, &kids, &lens, &leaf_ids, &va_small, &vb_small);
+
         // Large scale (should normalize to same proportions)
         let va_large = vec![10.0, 20.0];
         let vb_large = vec![10.0, 20.0];
-        let result_large = unifrac_pair_weighted(&post, &kids, &lens, &leaf_ids, &va_large, &vb_large);
-        
+        let result_large =
+            unifrac_pair_weighted(&post, &kids, &lens, &leaf_ids, &va_large, &vb_large);
+
         // Results should be identical after normalization (both should be 0.0 since samples are identical)
         assert_eq!(result_small, 0.0);
         assert_eq!(result_large, 0.0);
@@ -2201,9 +2202,9 @@ mod tests {
         let leaf_ids = vec![1, 2];
         let va = vec![1.0, 2.0];
         let vb = vec![2.0, 1.0];
-        
+
         let result = unifrac_pair_weighted(&post, &kids, &lens, &leaf_ids, &va, &vb);
-        
+
         // Should handle the partial_sums initialization correctly
         assert!(result >= 0.0);
         assert!(result.is_finite());
@@ -2225,9 +2226,9 @@ mod tests {
         let leaf_ids = vec![0, 1];
         let va = vec![1.0, 0.0];
         let vb = vec![0.0, 1.0];
-        
+
         let result = unifrac_pair_weighted(&post, &kids, &lens, &leaf_ids, &va, &vb);
-        
+
         // Expected: (|-1.0| * 1.0) / (1.0 + 1.0) = 1.0 / 2.0 = 0.5
         assert!((result - 0.5).abs() < 1e-10);
     }
@@ -2240,16 +2241,16 @@ mod tests {
         let kids = vec![vec![], vec![]];
         let lens = vec![0.0, 1.0];
         let leaf_ids = vec![0, 1];
-        
+
         // Create vectors that normalize to nearly identical values
         // va: [1.0, 1.0] -> normalized: [0.5, 0.5]
         // vb: [1.0 + 1e-13, 1.0 - 1e-13] -> normalized: [0.5 + tiny, 0.5 - tiny]
         // Difference should be very small (< 1e-12) and ignored
         let va = vec![1.0, 1.0];
         let vb = vec![1.0 + 1e-13, 1.0 - 1e-13];
-        
+
         let result = unifrac_pair_weighted(&post, &kids, &lens, &leaf_ids, &va, &vb);
-        
+
         // Small differences below threshold should result in zero distance
         // (since they're not stored in partial_sums)
         assert_eq!(result, 0.0);
@@ -2265,9 +2266,9 @@ mod tests {
         let leaf_ids = vec![2, 4]; // Non-sequential leaf IDs
         let va = vec![1.0, 2.0];
         let vb = vec![2.0, 1.0];
-        
+
         let result = unifrac_pair_weighted(&post, &kids, &lens, &leaf_ids, &va, &vb);
-        
+
         // Should correctly index into partial_sums using leaf_id
         assert!(result >= 0.0);
         assert!(result.is_finite());
@@ -2283,9 +2284,9 @@ mod tests {
         let leaf_ids = vec![0, 1];
         let va = vec![1.0, 2.0, 3.0]; // 3 elements
         let vb = vec![1.0, 2.0]; // 2 elements
-        
+
         let result = unifrac_pair_weighted(&post, &kids, &lens, &leaf_ids, &va, &vb);
-        
+
         // Should handle mismatched lengths gracefully
         assert!(result >= 0.0);
         assert!(result.is_finite());
@@ -2300,9 +2301,9 @@ mod tests {
         let leaf_ids = vec![0, 1, 2, 3]; // 4 leaf IDs
         let va = vec![1.0, 2.0]; // Only 2 elements
         let vb = vec![2.0, 1.0]; // Only 2 elements
-        
+
         let result = unifrac_pair_weighted(&post, &kids, &lens, &leaf_ids, &va, &vb);
-        
+
         // Should handle when i >= normalized_a.len() or normalized_b.len()
         assert!(result >= 0.0);
         assert!(result.is_finite());
