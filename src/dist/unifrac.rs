@@ -376,7 +376,7 @@ impl NewDistUniFrac {
         // Root is the last node in postorder (processed last in postorder traversal)
         let root_idx = post[post.len() - 1];
         let mut parent = vec![0; total_nodes];
-        
+
         // Build parent mapping: for each node, set parent of its children
         for (node_idx, children) in kids.iter().enumerate() {
             for &child_idx in children {
@@ -385,7 +385,7 @@ impl NewDistUniFrac {
                 }
             }
         }
-        
+
         // Root is its own parent
         parent[root_idx] = root_idx;
 
@@ -494,20 +494,14 @@ impl Distance<f32> for NewDistUniFrac {
         let relevant_leaves = if self.weighted {
             identify_relevant_leaves_weighted(&self.leaf_ids, va, vb)
         } else {
-            let a_bits: BitVec<u8, bitvec::order::Lsb0> = 
-                va.iter().map(|&x| x > 0.0).collect();
-            let b_bits: BitVec<u8, bitvec::order::Lsb0> = 
-                vb.iter().map(|&x| x > 0.0).collect();
+            let a_bits: BitVec<u8, bitvec::order::Lsb0> = va.iter().map(|&x| x > 0.0).collect();
+            let b_bits: BitVec<u8, bitvec::order::Lsb0> = vb.iter().map(|&x| x > 0.0).collect();
             identify_relevant_leaves(&self.leaf_ids, &a_bits, &b_bits)
         };
-        
+
         // Mark ancestors for sparse traversal
-        let is_relevant = mark_relevant_ancestors(
-            &relevant_leaves,
-            &self.parent,
-            self.root_idx,
-        );
-        
+        let is_relevant = mark_relevant_ancestors(&relevant_leaves, &self.parent, self.root_idx);
+
         // Calculate distance using sparse traversal (default)
         if self.weighted {
             unifrac_pair_weighted(
@@ -520,11 +514,9 @@ impl Distance<f32> for NewDistUniFrac {
                 Some(&is_relevant), // Sparse traversal enabled by default
             ) as f32
         } else {
-            let a_bits: BitVec<u8, bitvec::order::Lsb0> = 
-                va.iter().map(|&x| x > 0.0).collect();
-            let b_bits: BitVec<u8, bitvec::order::Lsb0> = 
-                vb.iter().map(|&x| x > 0.0).collect();
-            
+            let a_bits: BitVec<u8, bitvec::order::Lsb0> = va.iter().map(|&x| x > 0.0).collect();
+            let b_bits: BitVec<u8, bitvec::order::Lsb0> = vb.iter().map(|&x| x > 0.0).collect();
+
             unifrac_pair(
                 &self.post,
                 &self.kids,
@@ -703,11 +695,7 @@ fn identify_relevant_leaves(
 /// # Returns
 ///
 /// Set of leaf node indices that have non-zero abundance in either sample A or B
-fn identify_relevant_leaves_weighted(
-    leaf_ids: &[usize],
-    va: &[f32],
-    vb: &[f32],
-) -> HashSet<usize> {
+fn identify_relevant_leaves_weighted(leaf_ids: &[usize], va: &[f32], vb: &[f32]) -> HashSet<usize> {
     let mut relevant = HashSet::new();
     for (leaf_pos, &leaf_id) in leaf_ids.iter().enumerate() {
         if leaf_pos < va.len() && leaf_pos < vb.len() {
@@ -748,45 +736,45 @@ fn mark_relevant_ancestors(
 ) -> Vec<bool> {
     let num_nodes = parent.len();
     let mut is_relevant = vec![false; num_nodes];
-    
+
     // Mark all relevant leaves
     for &leaf_id in relevant_leaves {
         if leaf_id < num_nodes {
             is_relevant[leaf_id] = true;
         }
     }
-    
+
     // Traverse upward from each leaf to root
     // Optimization: Stop early if parent is already marked (all ancestors above are marked)
     for &leaf_id in relevant_leaves {
         if leaf_id >= num_nodes {
             continue;
         }
-        
+
         let mut current = leaf_id;
         while current != root_idx {
             let parent_id = parent[current];
-            
+
             // Bounds check
             if parent_id >= num_nodes {
                 break;
             }
-            
+
             // If parent is already marked, all ancestors above are already marked
             if is_relevant[parent_id] {
                 break;
             }
-            
+
             is_relevant[parent_id] = true;
             current = parent_id;
         }
     }
-    
+
     // Always mark root (it's the ancestor of all leaves, even if no relevant leaves exist)
     if root_idx < num_nodes {
         is_relevant[root_idx] = true;
     }
-    
+
     is_relevant
 }
 
@@ -812,12 +800,9 @@ fn mark_relevant_ancestors(
 ///
 /// Filtered postorder traversal containing only relevant nodes, maintaining
 /// the postorder property
-fn build_sparse_postorder(
-    post: &[usize],
-    is_relevant: &[bool],
-) -> Vec<usize> {
+fn build_sparse_postorder(post: &[usize], is_relevant: &[bool]) -> Vec<usize> {
     let mut sparse_post = Vec::new();
-    
+
     // Filter postorder to include only relevant nodes
     // Postorder property is maintained because we're filtering an already-correct sequence
     for &node in post {
@@ -825,7 +810,7 @@ fn build_sparse_postorder(
             sparse_post.push(node);
         }
     }
-    
+
     sparse_post
 }
 
@@ -878,7 +863,7 @@ fn unifrac_pair(
     const A_BIT: u8 = 0b01;
     const B_BIT: u8 = 0b10;
     let mut mask = vec![0u8; lens.len()];
-    
+
     // Determine which nodes to process
     let nodes_to_process = if let Some(relevant) = is_relevant {
         // Build sparse postorder for sparse traversal
@@ -887,7 +872,7 @@ fn unifrac_pair(
         // Use full postorder for backward compatibility
         post.to_vec()
     };
-    
+
     // Set leaf masks (only for relevant leaves if sparse, all leaves otherwise)
     for (leaf_pos, &nid) in leaf_ids.iter().enumerate() {
         if let Some(relevant) = is_relevant {
@@ -902,7 +887,7 @@ fn unifrac_pair(
             mask[nid] |= B_BIT;
         }
     }
-    
+
     // Propagate masks (only for nodes in nodes_to_process)
     for &v in &nodes_to_process {
         for &c in &kids[v] {
@@ -914,7 +899,7 @@ fn unifrac_pair(
             mask[v] |= mask[c];
         }
     }
-    
+
     // Calculate distance (only for nodes in nodes_to_process)
     let (mut shared, mut union) = (0.0, 0.0);
     for &v in &nodes_to_process {
@@ -930,7 +915,7 @@ fn unifrac_pair(
             union += len;
         }
     }
-    
+
     if union == 0.0 {
         0.0
     } else {
@@ -988,7 +973,7 @@ pub(crate) fn unifrac_pair_weighted(
     } else {
         vec![0.0; va.len()]
     };
-    
+
     let sum_b: f32 = vb.iter().sum();
     let normalized_b: Vec<f32> = if sum_b > 0.0 {
         let inv_b = 1.0 / sum_b;
@@ -996,17 +981,17 @@ pub(crate) fn unifrac_pair_weighted(
     } else {
         vec![0.0; vb.len()]
     };
-    
+
     // Determine which nodes to process
     let nodes_to_process = if let Some(relevant) = is_relevant {
         build_sparse_postorder(post, relevant)
     } else {
         post.to_vec()
     };
-    
+
     let num_nodes = lens.len();
     let mut partial_sums = vec![0.0; num_nodes];
-    
+
     // Initialize partial sums (only for relevant leaves if sparse)
     for (i, &leaf_id) in leaf_ids.iter().enumerate() {
         if let Some(relevant) = is_relevant {
@@ -1021,7 +1006,7 @@ pub(crate) fn unifrac_pair_weighted(
             }
         }
     }
-    
+
     // Propagate partial sums (only for nodes in nodes_to_process)
     for &v in &nodes_to_process {
         for &c in &kids[v] {
@@ -1033,21 +1018,21 @@ pub(crate) fn unifrac_pair_weighted(
             partial_sums[v] += partial_sums[c];
         }
     }
-    
+
     // Calculate distance (only for nodes in nodes_to_process)
     let mut distance = 0.0f64;
     let mut total_length = 0.0f64;
-    
+
     for &node_id in &nodes_to_process {
         let diff = partial_sums[node_id] as f64;
         let branch_len = lens[node_id] as f64;
-        
+
         if branch_len > 0.0 {
             distance += diff.abs() * branch_len;
             total_length += branch_len;
         }
     }
-    
+
     if total_length > 0.0 {
         distance / total_length
     } else {
@@ -1438,14 +1423,14 @@ pub struct DistUniFrac_C {
 // 2) Expose the extern "C" functions from your C++ library
 // ----------------------------------------------------------------------------
 extern "C" {
-    /// Builds a BPTree from a Newick string.  
+    /// Builds a BPTree from a Newick string.
     /// On success, it writes an allocated `OpaqueBPTree*` into `tree_data_out`.
     pub fn load_bptree_opaque(newick: *const c_char, tree_data_out: *mut *mut OpaqueBPTree);
 
     /// Frees the BPTree allocated by `load_bptree_opaque`.
     pub fn destroy_bptree_opaque(tree_data: *mut *mut OpaqueBPTree);
 
-    /// The main distance function in C++:  
+    /// The main distance function in C++:
     ///   one_dense_pair_v2t(n_obs, obs_ids, sample1, sample2, tree_data, method_str, ...)
     pub fn one_dense_pair_v2t(
         n_obs: c_uint,
