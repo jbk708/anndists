@@ -633,6 +633,62 @@ fn identify_relevant_leaves_weighted(
     relevant
 }
 
+/// Mark all ancestors of relevant leaves using bottom-up traversal
+/// Returns: Vec<bool> where is_relevant[i] = true if node i is relevant
+/// 
+/// This function traverses upward from each relevant leaf to the root,
+/// marking all ancestors. It uses early termination optimization: if a
+/// parent is already marked, all ancestors above it are already marked.
+#[allow(dead_code)] // Will be used in Ticket 4 (sparse traversal)
+fn mark_relevant_ancestors(
+    relevant_leaves: &HashSet<usize>,
+    parent: &[usize],
+    root_idx: usize,
+) -> Vec<bool> {
+    let num_nodes = parent.len();
+    let mut is_relevant = vec![false; num_nodes];
+    
+    // Mark all relevant leaves
+    for &leaf_id in relevant_leaves {
+        if leaf_id < num_nodes {
+            is_relevant[leaf_id] = true;
+        }
+    }
+    
+    // Traverse upward from each leaf to root
+    // Optimization: Stop early if parent is already marked (all ancestors above are marked)
+    for &leaf_id in relevant_leaves {
+        if leaf_id >= num_nodes {
+            continue;
+        }
+        
+        let mut current = leaf_id;
+        while current != root_idx {
+            let parent_id = parent[current];
+            
+            // Bounds check
+            if parent_id >= num_nodes {
+                break;
+            }
+            
+            // If parent is already marked, all ancestors above are already marked
+            if is_relevant[parent_id] {
+                break;
+            }
+            
+            is_relevant[parent_id] = true;
+            current = parent_id;
+        }
+    }
+    
+    // Always mark root (it's the ancestor of all leaves, even if no relevant leaves exist)
+    if root_idx < num_nodes {
+        is_relevant[root_idx] = true;
+    }
+    
+    is_relevant
+}
+
 //--------------------------------------------------------------------------------------//
 // Fast unweighted UniFrac using bit masks
 //--------------------------------------------------------------------------------------//
