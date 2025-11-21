@@ -59,8 +59,11 @@ impl DistUniFrac {
             weighted,
             feature_names.len()
         );
-        trace!("DistUniFrac::new: Newick string length: {} chars", newick_str.len());
-        
+        trace!(
+            "DistUniFrac::new: Newick string length: {} chars",
+            newick_str.len()
+        );
+
         // Parse the tree from the Newick string
         let tree = Tree::from_newick(newick_str)?;
         info!("DistUniFrac::new: parsed tree with {} nodes", tree.size());
@@ -99,7 +102,7 @@ impl Distance<f32> for DistUniFrac {
             va.len(),
             vb.len()
         );
-        
+
         if va.len() != vb.len() {
             warn!(
                 "DistUniFrac::eval: vector length mismatch: va.len()={}, vb.len()={}",
@@ -107,7 +110,7 @@ impl Distance<f32> for DistUniFrac {
                 vb.len()
             );
         }
-        
+
         if va.len() != self.feature_names.len() {
             warn!(
                 "DistUniFrac::eval: vector length doesn't match feature_names: va.len()={}, feature_names.len()={}",
@@ -115,7 +118,7 @@ impl Distance<f32> for DistUniFrac {
                 self.feature_names.len()
             );
         }
-        
+
         let result = if self.weighted {
             trace!("DistUniFrac::eval: computing weighted UniFrac");
             compute_unifrac_for_pair_weighted_bitwise(
@@ -139,7 +142,7 @@ impl Distance<f32> for DistUniFrac {
                 vb,
             )
         };
-        
+
         debug!("DistUniFrac::eval: computed distance = {}", result);
         result
     }
@@ -182,12 +185,13 @@ fn build_tint_lint(tree: &Tree) -> Result<(Vec<usize>, Vec<f32>, Vec<usize>, Vec
             trace!("build_tint_lint: node {} has name '{}'", pos_map[nid], name);
         }
         if nid != root {
-            let p = node
-                .parent
-                .ok_or_else(|| {
-                    warn!("build_tint_lint: node {} has no parent but is not root", nid);
-                    anyhow!("Node has no parent but is not root")
-                })?;
+            let p = node.parent.ok_or_else(|| {
+                warn!(
+                    "build_tint_lint: node {} has no parent but is not root",
+                    nid
+                );
+                anyhow!("Node has no parent but is not root")
+            })?;
             tint[pos_map[nid]] = pos_map[p];
             let edge_len = node.parent_edge.unwrap_or(0.0) as f32;
             lint[pos_map[nid]] = edge_len;
@@ -226,7 +230,10 @@ fn build_leaf_map(
         if node.is_tip() {
             if let Some(name) = &node.name {
                 let idx = pos_map[l];
-                debug!("build_leaf_map: recognized tip='{}', postord_idx={}", name, idx);
+                debug!(
+                    "build_leaf_map: recognized tip='{}', postord_idx={}",
+                    name, idx
+                );
                 leaf_map.insert(name.clone(), idx);
             } else {
                 unnamed_leaves += 1;
@@ -375,15 +382,17 @@ impl NewDistUniFrac {
             weighted,
             feature_names.len()
         );
-        trace!("NewDistUniFrac::new: Newick string length: {} chars", newick_str.len());
-        
+        trace!(
+            "NewDistUniFrac::new: Newick string length: {} chars",
+            newick_str.len()
+        );
+
         // 1. Parse Newick string
         trace!("NewDistUniFrac::new: parsing Newick string");
-        let t: NewickTree = one_from_string(newick_str)
-            .map_err(|e| {
-                warn!("NewDistUniFrac::new: failed to parse Newick string: {}", e);
-                anyhow!("Failed to parse Newick string: {}", e)
-            })?;
+        let t: NewickTree = one_from_string(newick_str).map_err(|e| {
+            warn!("NewDistUniFrac::new: failed to parse Newick string: {}", e);
+            anyhow!("Failed to parse Newick string: {}", e)
+        })?;
         info!("NewDistUniFrac::new: parsed Newick tree");
 
         // 2. Build tree structure using succparen-compatible approach
@@ -428,7 +437,10 @@ impl NewDistUniFrac {
 
         // 3. Build children arrays and postorder (succparen-compatible structure)
         let total_nodes = index_counter;
-        info!("NewDistUniFrac::new: assigned indices to {} nodes", total_nodes);
+        info!(
+            "NewDistUniFrac::new: assigned indices to {} nodes",
+            total_nodes
+        );
         let mut kids = vec![Vec::<usize>::new(); total_nodes];
         let mut post = Vec::<usize>::with_capacity(total_nodes);
 
@@ -517,7 +529,11 @@ impl NewDistUniFrac {
         for fname in &feature_names {
             if let Some(&leaf_pos) = t2leaf.get(fname.as_str()) {
                 mapped_leaf_ids.push(leaf_ids[leaf_pos]);
-                trace!("NewDistUniFrac::new: mapped feature '{}' to leaf ID {}", fname, leaf_ids[leaf_pos]);
+                trace!(
+                    "NewDistUniFrac::new: mapped feature '{}' to leaf ID {}",
+                    fname,
+                    leaf_ids[leaf_pos]
+                );
             } else {
                 missing_features.push(fname.clone());
             }
@@ -597,7 +613,7 @@ impl Distance<f32> for NewDistUniFrac {
             vb.len(),
             self.feature_names.len()
         );
-        
+
         if va.len() != vb.len() {
             warn!(
                 "NewDistUniFrac::eval: vector length mismatch: va.len()={}, vb.len()={}",
@@ -605,7 +621,7 @@ impl Distance<f32> for NewDistUniFrac {
                 vb.len()
             );
         }
-        
+
         if va.len() != self.feature_names.len() {
             warn!(
                 "NewDistUniFrac::eval: vector length doesn't match feature_names: va.len()={}, feature_names.len()={}",
@@ -613,7 +629,7 @@ impl Distance<f32> for NewDistUniFrac {
                 self.feature_names.len()
             );
         }
-        
+
         // Identify relevant leaves for sparse traversal
         trace!("NewDistUniFrac::eval: identifying relevant leaves");
         let relevant_leaves = if self.weighted {
@@ -623,13 +639,19 @@ impl Distance<f32> for NewDistUniFrac {
             let b_bits: BitVec<u8, bitvec::order::Lsb0> = vb.iter().map(|&x| x > 0.0).collect();
             identify_relevant_leaves(&self.leaf_ids, &a_bits, &b_bits)
         };
-        debug!("NewDistUniFrac::eval: found {} relevant leaves", relevant_leaves.len());
+        debug!(
+            "NewDistUniFrac::eval: found {} relevant leaves",
+            relevant_leaves.len()
+        );
 
         // Mark ancestors for sparse traversal
         trace!("NewDistUniFrac::eval: marking relevant ancestors");
         let is_relevant = mark_relevant_ancestors(&relevant_leaves, &self.parent, self.root_idx);
         let num_relevant_nodes = is_relevant.iter().filter(|&&x| x).count();
-        debug!("NewDistUniFrac::eval: {} nodes marked as relevant", num_relevant_nodes);
+        debug!(
+            "NewDistUniFrac::eval: {} nodes marked as relevant",
+            num_relevant_nodes
+        );
 
         // Calculate distance using sparse traversal (default)
         let result = if self.weighted {
@@ -658,7 +680,7 @@ impl Distance<f32> for NewDistUniFrac {
                 Some(&is_relevant), // Sparse traversal enabled by default
             ) as f32
         };
-        
+
         debug!("NewDistUniFrac::eval: computed distance = {}", result);
         result
     }
@@ -809,11 +831,18 @@ fn identify_relevant_leaves(
         if leaf_pos < a.len() && leaf_pos < b.len() {
             if a[leaf_pos] || b[leaf_pos] {
                 relevant.insert(leaf_id);
-                trace!("identify_relevant_leaves: leaf {} (pos {}) is relevant", leaf_id, leaf_pos);
+                trace!(
+                    "identify_relevant_leaves: leaf {} (pos {}) is relevant",
+                    leaf_id,
+                    leaf_pos
+                );
             }
         }
     }
-    debug!("identify_relevant_leaves: identified {} relevant leaves", relevant.len());
+    debug!(
+        "identify_relevant_leaves: identified {} relevant leaves",
+        relevant.len()
+    );
     relevant
 }
 
@@ -849,7 +878,10 @@ fn identify_relevant_leaves_weighted(leaf_ids: &[usize], va: &[f32], vb: &[f32])
             }
         }
     }
-    debug!("identify_relevant_leaves_weighted: identified {} relevant leaves", relevant.len());
+    debug!(
+        "identify_relevant_leaves_weighted: identified {} relevant leaves",
+        relevant.len()
+    );
     relevant
 }
 
@@ -888,9 +920,15 @@ fn mark_relevant_ancestors(
     for &leaf_id in relevant_leaves {
         if leaf_id < num_nodes {
             is_relevant[leaf_id] = true;
-            trace!("mark_relevant_ancestors: marked leaf {} as relevant", leaf_id);
+            trace!(
+                "mark_relevant_ancestors: marked leaf {} as relevant",
+                leaf_id
+            );
         } else {
-            warn!("mark_relevant_ancestors: leaf_id {} >= num_nodes {}", leaf_id, num_nodes);
+            warn!(
+                "mark_relevant_ancestors: leaf_id {} >= num_nodes {}",
+                leaf_id, num_nodes
+            );
         }
     }
 
@@ -908,18 +946,27 @@ fn mark_relevant_ancestors(
 
             // Bounds check
             if parent_id >= num_nodes {
-                warn!("mark_relevant_ancestors: parent_id {} >= num_nodes {}", parent_id, num_nodes);
+                warn!(
+                    "mark_relevant_ancestors: parent_id {} >= num_nodes {}",
+                    parent_id, num_nodes
+                );
                 break;
             }
 
             // If parent is already marked, all ancestors above are already marked
             if is_relevant[parent_id] {
-                trace!("mark_relevant_ancestors: parent {} already marked, stopping traversal", parent_id);
+                trace!(
+                    "mark_relevant_ancestors: parent {} already marked, stopping traversal",
+                    parent_id
+                );
                 break;
             }
 
             is_relevant[parent_id] = true;
-            trace!("mark_relevant_ancestors: marked ancestor {} as relevant", parent_id);
+            trace!(
+                "mark_relevant_ancestors: marked ancestor {} as relevant",
+                parent_id
+            );
             current = parent_id;
             traversal_count += 1;
         }
@@ -928,9 +975,15 @@ fn mark_relevant_ancestors(
     // Always mark root (it's the ancestor of all leaves, even if no relevant leaves exist)
     if root_idx < num_nodes {
         is_relevant[root_idx] = true;
-        trace!("mark_relevant_ancestors: marked root {} as relevant", root_idx);
+        trace!(
+            "mark_relevant_ancestors: marked root {} as relevant",
+            root_idx
+        );
     } else {
-        warn!("mark_relevant_ancestors: root_idx {} >= num_nodes {}", root_idx, num_nodes);
+        warn!(
+            "mark_relevant_ancestors: root_idx {} >= num_nodes {}",
+            root_idx, num_nodes
+        );
     }
 
     debug!(
@@ -1078,11 +1131,21 @@ fn unifrac_pair(
         let len = lens[v] as f64;
         if m == A_BIT || m == B_BIT {
             union += len;
-            trace!("unifrac_pair: node {} contributes {} to union (mask={:02b})", v, len, m);
+            trace!(
+                "unifrac_pair: node {} contributes {} to union (mask={:02b})",
+                v,
+                len,
+                m
+            );
         } else {
             shared += len;
             union += len;
-            trace!("unifrac_pair: node {} contributes {} to shared and union (mask={:02b})", v, len, m);
+            trace!(
+                "unifrac_pair: node {} contributes {} to shared and union (mask={:02b})",
+                v,
+                len,
+                m
+            );
         }
     }
 
@@ -1091,7 +1154,10 @@ fn unifrac_pair(
         0.0
     } else {
         let distance = 1.0 - shared / union;
-        debug!("unifrac_pair: shared={}, union={}, distance={}", shared, union, distance);
+        debug!(
+            "unifrac_pair: shared={}, union={}, distance={}",
+            shared, union, distance
+        );
         distance
     };
     result
@@ -1140,7 +1206,7 @@ pub(crate) fn unifrac_pair_weighted(
     is_relevant: Option<&[bool]>,
 ) -> f64 {
     trace!("unifrac_pair_weighted: starting weighted UniFrac calculation");
-    
+
     // Normalize samples (same as before)
     let sum_a: f32 = va.iter().sum();
     trace!("unifrac_pair_weighted: sample A sum = {}", sum_a);
@@ -1170,11 +1236,17 @@ pub(crate) fn unifrac_pair_weighted(
         trace!("unifrac_pair_weighted: using full traversal");
         post.to_vec()
     };
-    debug!("unifrac_pair_weighted: processing {} nodes", nodes_to_process.len());
+    debug!(
+        "unifrac_pair_weighted: processing {} nodes",
+        nodes_to_process.len()
+    );
 
     let num_nodes = lens.len();
     let mut partial_sums = vec![0.0; num_nodes];
-    trace!("unifrac_pair_weighted: initialized partial_sums for {} nodes", num_nodes);
+    trace!(
+        "unifrac_pair_weighted: initialized partial_sums for {} nodes",
+        num_nodes
+    );
 
     // Initialize partial sums (only for relevant leaves if sparse)
     for (i, &leaf_id) in leaf_ids.iter().enumerate() {
@@ -1230,9 +1302,7 @@ pub(crate) fn unifrac_pair_weighted(
         let final_distance = distance / total_length;
         debug!(
             "unifrac_pair_weighted: distance={}, total_length={}, final_distance={}",
-            distance,
-            total_length,
-            final_distance
+            distance, total_length, final_distance
         );
         final_distance
     } else {
@@ -1427,10 +1497,17 @@ fn compute_unifrac_for_pair_unweighted_bitwise(
     vb: &[f32],
 ) -> f32 {
     info!("compute_unifrac_for_pair_unweighted_bitwise: starting calculation");
-    debug!("compute_unifrac_for_pair_unweighted_bitwise: va.len()={}, vb.len()={}", va.len(), vb.len());
+    debug!(
+        "compute_unifrac_for_pair_unweighted_bitwise: va.len()={}, vb.len()={}",
+        va.len(),
+        vb.len()
+    );
     let num_nodes = nodes_in_order.len();
     let mut partial_sums = vec![0.0; num_nodes];
-    trace!("compute_unifrac_for_pair_unweighted_bitwise: initialized partial_sums for {} nodes", num_nodes);
+    trace!(
+        "compute_unifrac_for_pair_unweighted_bitwise: initialized partial_sums for {} nodes",
+        num_nodes
+    );
 
     // 1) Build presence masks for va, vb
     trace!("compute_unifrac_for_pair_unweighted_bitwise: building presence masks");
@@ -1442,8 +1519,14 @@ fn compute_unifrac_for_pair_unweighted_bitwise(
     trace!("compute_unifrac_for_pair_unweighted_bitwise: combining masks and extracting non-zero indices");
     let combined = or_masks(&mask_a, &mask_b);
     let non_zero_indices = extract_set_bits(&combined);
-    debug!("compute_unifrac_for_pair_unweighted_bitwise: found {} non-zero indices", non_zero_indices.len());
-    trace!("compute_unifrac_for_pair_unweighted_bitwise: non_zero_indices = {:?}", non_zero_indices);
+    debug!(
+        "compute_unifrac_for_pair_unweighted_bitwise: found {} non-zero indices",
+        non_zero_indices.len()
+    );
+    trace!(
+        "compute_unifrac_for_pair_unweighted_bitwise: non_zero_indices = {:?}",
+        non_zero_indices
+    );
 
     // 3) Create local arrays
     let mut local_a = Vec::with_capacity(non_zero_indices.len());
@@ -1517,7 +1600,10 @@ fn compute_unifrac_for_pair_unweighted_bitwise(
             lint[i]
         );
     }
-    info!("compute_unifrac_for_pair_unweighted_bitwise: final unweighted distance = {}", dist);
+    info!(
+        "compute_unifrac_for_pair_unweighted_bitwise: final unweighted distance = {}",
+        dist
+    );
     dist
 }
 
@@ -1535,10 +1621,17 @@ fn compute_unifrac_for_pair_weighted_bitwise(
     vb: &[f32],
 ) -> f32 {
     info!("compute_unifrac_for_pair_weighted_bitwise: starting calculation");
-    debug!("compute_unifrac_for_pair_weighted_bitwise: va.len()={}, vb.len()={}", va.len(), vb.len());
+    debug!(
+        "compute_unifrac_for_pair_weighted_bitwise: va.len()={}, vb.len()={}",
+        va.len(),
+        vb.len()
+    );
     let num_nodes = nodes_in_order.len();
     let mut partial_sums = vec![0.0; num_nodes];
-    trace!("compute_unifrac_for_pair_weighted_bitwise: initialized partial_sums for {} nodes", num_nodes);
+    trace!(
+        "compute_unifrac_for_pair_weighted_bitwise: initialized partial_sums for {} nodes",
+        num_nodes
+    );
 
     // 1) presence masks
     trace!("compute_unifrac_for_pair_weighted_bitwise: building presence masks");
@@ -1550,8 +1643,14 @@ fn compute_unifrac_for_pair_weighted_bitwise(
     trace!("compute_unifrac_for_pair_weighted_bitwise: combining masks and extracting non-zero indices");
     let combined = or_masks(&mask_a, &mask_b);
     let non_zero_indices = extract_set_bits(&combined);
-    debug!("compute_unifrac_for_pair_weighted_bitwise: found {} non-zero indices", non_zero_indices.len());
-    trace!("compute_unifrac_for_pair_weighted_bitwise: non_zero_indices = {:?}", non_zero_indices);
+    debug!(
+        "compute_unifrac_for_pair_weighted_bitwise: found {} non-zero indices",
+        non_zero_indices.len()
+    );
+    trace!(
+        "compute_unifrac_for_pair_weighted_bitwise: non_zero_indices = {:?}",
+        non_zero_indices
+    );
 
     // 3) build local arrays
     let mut local_a = Vec::with_capacity(non_zero_indices.len());
@@ -1566,7 +1665,10 @@ fn compute_unifrac_for_pair_weighted_bitwise(
     // 4) sum & normalize
     trace!("compute_unifrac_for_pair_weighted_bitwise: summing and normalizing");
     let sum_a: f32 = local_a.iter().sum();
-    trace!("compute_unifrac_for_pair_weighted_bitwise: sample A sum = {}", sum_a);
+    trace!(
+        "compute_unifrac_for_pair_weighted_bitwise: sample A sum = {}",
+        sum_a
+    );
     if sum_a > 0.0 {
         let inv_a = 1.0 / sum_a;
         for x in local_a.iter_mut() {
@@ -1576,7 +1678,10 @@ fn compute_unifrac_for_pair_weighted_bitwise(
         warn!("compute_unifrac_for_pair_weighted_bitwise: sample A sum is 0.0");
     }
     let sum_b: f32 = local_b.iter().sum();
-    trace!("compute_unifrac_for_pair_weighted_bitwise: sample B sum = {}", sum_b);
+    trace!(
+        "compute_unifrac_for_pair_weighted_bitwise: sample B sum = {}",
+        sum_b
+    );
     if sum_b > 0.0 {
         let inv_b = 1.0 / sum_b;
         for x in local_b.iter_mut() {
@@ -1616,7 +1721,10 @@ fn compute_unifrac_for_pair_weighted_bitwise(
             lint[i]
         );
     }
-    info!("compute_unifrac_for_pair_weighted_bitwise: final weighted distance = {}", dist);
+    info!(
+        "compute_unifrac_for_pair_weighted_bitwise: final weighted distance = {}",
+        dist
+    );
     dist
 }
 
