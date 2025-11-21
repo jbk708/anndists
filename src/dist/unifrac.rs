@@ -689,6 +689,31 @@ fn mark_relevant_ancestors(
     is_relevant
 }
 
+/// Build sparse postorder traversal containing only relevant nodes
+/// Maintains postorder property (children before parents)
+/// 
+/// This function filters the full postorder traversal to include only nodes
+/// marked as relevant. The postorder property is preserved because we're
+/// filtering an already-correct sequence - children always appear before
+/// parents in the original postorder.
+#[allow(dead_code)] // Will be used in Ticket 5 (sparse traversal)
+fn build_sparse_postorder(
+    post: &[usize],
+    is_relevant: &[bool],
+) -> Vec<usize> {
+    let mut sparse_post = Vec::new();
+    
+    // Filter postorder to include only relevant nodes
+    // Postorder property is maintained because we're filtering an already-correct sequence
+    for &node in post {
+        if node < is_relevant.len() && is_relevant[node] {
+            sparse_post.push(node);
+        }
+    }
+    
+    sparse_post
+}
+
 //--------------------------------------------------------------------------------------//
 // Fast unweighted UniFrac using bit masks
 //--------------------------------------------------------------------------------------//
