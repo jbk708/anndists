@@ -5,7 +5,7 @@ use super::traits::Distance;
 use anyhow::{anyhow, Result};
 use log::debug;
 use phylotree::tree::Tree;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 // for BitVec used in NewDistUniFrac
 use bitvec::prelude::*;
@@ -592,6 +592,50 @@ fn unifrac_succparen_normalized(
         1.0 - shared / union
     }
 }
+
+//--------------------------------------------------------------------------------------//
+// Sparsity-aware helper functions
+//--------------------------------------------------------------------------------------//
+
+/// Identify leaf node indices that are present in either sample A or B (unweighted)
+#[allow(dead_code)] // Will be used in Ticket 3 (sparse traversal)
+fn identify_relevant_leaves(
+    leaf_ids: &[usize],
+    a: &BitVec<u8, bitvec::order::Lsb0>,
+    b: &BitVec<u8, bitvec::order::Lsb0>,
+) -> HashSet<usize> {
+    let mut relevant = HashSet::new();
+    for (leaf_pos, &leaf_id) in leaf_ids.iter().enumerate() {
+        if leaf_pos < a.len() && leaf_pos < b.len() {
+            if a[leaf_pos] || b[leaf_pos] {
+                relevant.insert(leaf_id);
+            }
+        }
+    }
+    relevant
+}
+
+/// Identify leaf node indices that are present in either sample A or B (weighted)
+#[allow(dead_code)] // Will be used in Ticket 3 (sparse traversal)
+fn identify_relevant_leaves_weighted(
+    leaf_ids: &[usize],
+    va: &[f32],
+    vb: &[f32],
+) -> HashSet<usize> {
+    let mut relevant = HashSet::new();
+    for (leaf_pos, &leaf_id) in leaf_ids.iter().enumerate() {
+        if leaf_pos < va.len() && leaf_pos < vb.len() {
+            if va[leaf_pos] > 0.0 || vb[leaf_pos] > 0.0 {
+                relevant.insert(leaf_id);
+            }
+        }
+    }
+    relevant
+}
+
+//--------------------------------------------------------------------------------------//
+// Fast unweighted UniFrac using bit masks
+//--------------------------------------------------------------------------------------//
 
 /// Fast unweighted UniFrac using bit masks
 fn unifrac_pair(
