@@ -458,14 +458,41 @@ impl NewDistUniFrac {
 
 impl Distance<f32> for NewDistUniFrac {
     fn eval(&self, va: &[f32], vb: &[f32]) -> f32 {
-        if self.weighted {
-            unifrac_pair_weighted(&self.post, &self.kids, &self.lens, &self.leaf_ids, va, vb) as f32
+        // Identify relevant leaves for sparse traversal
+        let relevant_leaves = if self.weighted {
+            identify_relevant_leaves_weighted(&self.leaf_ids, va, vb)
         } else {
-            // Convert to bit vectors for the working unifrac_pair function
-            let a_bits: BitVec<u8, bitvec::order::Lsb0> = va.iter().map(|&x| x > 0.0).collect();
-            let b_bits: BitVec<u8, bitvec::order::Lsb0> = vb.iter().map(|&x| x > 0.0).collect();
-
-            // Use the proven working unifrac_pair function
+            let a_bits: BitVec<u8, bitvec::order::Lsb0> = 
+                va.iter().map(|&x| x > 0.0).collect();
+            let b_bits: BitVec<u8, bitvec::order::Lsb0> = 
+                vb.iter().map(|&x| x > 0.0).collect();
+            identify_relevant_leaves(&self.leaf_ids, &a_bits, &b_bits)
+        };
+        
+        // Mark ancestors for sparse traversal
+        let is_relevant = mark_relevant_ancestors(
+            &relevant_leaves,
+            &self.parent,
+            self.root_idx,
+        );
+        
+        // Calculate distance using sparse traversal (default)
+        if self.weighted {
+            unifrac_pair_weighted(
+                &self.post,
+                &self.kids,
+                &self.lens,
+                &self.leaf_ids,
+                va,
+                vb,
+                Some(&is_relevant), // Sparse traversal enabled by default
+            ) as f32
+        } else {
+            let a_bits: BitVec<u8, bitvec::order::Lsb0> = 
+                va.iter().map(|&x| x > 0.0).collect();
+            let b_bits: BitVec<u8, bitvec::order::Lsb0> = 
+                vb.iter().map(|&x| x > 0.0).collect();
+            
             unifrac_pair(
                 &self.post,
                 &self.kids,
@@ -473,6 +500,7 @@ impl Distance<f32> for NewDistUniFrac {
                 &self.leaf_ids,
                 &a_bits,
                 &b_bits,
+                Some(&is_relevant), // Sparse traversal enabled by default
             ) as f32
         }
     }
@@ -598,7 +626,6 @@ fn unifrac_succparen_normalized(
 //--------------------------------------------------------------------------------------//
 
 /// Identify leaf node indices that are present in either sample A or B (unweighted)
-#[allow(dead_code)] // Will be used in Ticket 3 (sparse traversal)
 fn identify_relevant_leaves(
     leaf_ids: &[usize],
     a: &BitVec<u8, bitvec::order::Lsb0>,
@@ -616,7 +643,6 @@ fn identify_relevant_leaves(
 }
 
 /// Identify leaf node indices that are present in either sample A or B (weighted)
-#[allow(dead_code)] // Will be used in Ticket 3 (sparse traversal)
 fn identify_relevant_leaves_weighted(
     leaf_ids: &[usize],
     va: &[f32],
@@ -639,7 +665,6 @@ fn identify_relevant_leaves_weighted(
 /// This function traverses upward from each relevant leaf to the root,
 /// marking all ancestors. It uses early termination optimization: if a
 /// parent is already marked, all ancestors above it are already marked.
-#[allow(dead_code)] // Will be used in Ticket 4 (sparse traversal)
 fn mark_relevant_ancestors(
     relevant_leaves: &HashSet<usize>,
     parent: &[usize],
@@ -696,7 +721,6 @@ fn mark_relevant_ancestors(
 /// marked as relevant. The postorder property is preserved because we're
 /// filtering an already-correct sequence - children always appear before
 /// parents in the original postorder.
-#[allow(dead_code)] // Will be used in Ticket 5 (sparse traversal)
 fn build_sparse_postorder(
     post: &[usize],
     is_relevant: &[bool],
@@ -719,6 +743,9 @@ fn build_sparse_postorder(
 //--------------------------------------------------------------------------------------//
 
 /// Fast unweighted UniFrac using bit masks
+/// 
+/// If `is_relevant` is `Some`, uses sparse traversal (only processes relevant nodes).
+/// If `is_relevant` is `None`, uses full traversal (backward compatible).
 fn unifrac_pair(
     post: &[usize],
     kids: &[Vec<usize>],
@@ -726,25 +753,51 @@ fn unifrac_pair(
     leaf_ids: &[usize],
     a: &BitVec<u8, bitvec::order::Lsb0>,
     b: &BitVec<u8, bitvec::order::Lsb0>,
+    is_relevant: Option<&[bool]>,
 ) -> f64 {
     const A_BIT: u8 = 0b01;
     const B_BIT: u8 = 0b10;
     let mut mask = vec![0u8; lens.len()];
+    
+    // Determine which nodes to process
+    let nodes_to_process = if let Some(relevant) = is_relevant {
+        // Build sparse postorder for sparse traversal
+        build_sparse_postorder(post, relevant)
+    } else {
+        // Use full postorder for backward compatibility
+        post.to_vec()
+    };
+    
+    // Set leaf masks (only for relevant leaves if sparse, all leaves otherwise)
     for (leaf_pos, &nid) in leaf_ids.iter().enumerate() {
-        if a[leaf_pos] {
+        if let Some(relevant) = is_relevant {
+            if nid >= relevant.len() || !relevant[nid] {
+                continue; // Skip non-relevant leaves
+            }
+        }
+        if leaf_pos < a.len() && a[leaf_pos] {
             mask[nid] |= A_BIT;
         }
-        if b[leaf_pos] {
+        if leaf_pos < b.len() && b[leaf_pos] {
             mask[nid] |= B_BIT;
         }
     }
-    for &v in post {
+    
+    // Propagate masks (only for nodes in nodes_to_process)
+    for &v in &nodes_to_process {
         for &c in &kids[v] {
+            if let Some(relevant) = is_relevant {
+                if c >= relevant.len() || !relevant[c] {
+                    continue; // Skip non-relevant children
+                }
+            }
             mask[v] |= mask[c];
         }
     }
+    
+    // Calculate distance (only for nodes in nodes_to_process)
     let (mut shared, mut union) = (0.0, 0.0);
-    for &v in post {
+    for &v in &nodes_to_process {
         let m = mask[v];
         if m == 0 {
             continue;
@@ -757,6 +810,7 @@ fn unifrac_pair(
             union += len;
         }
     }
+    
     if union == 0.0 {
         0.0
     } else {
@@ -764,6 +818,10 @@ fn unifrac_pair(
     }
 }
 
+/// Weighted UniFrac distance calculation
+/// 
+/// If `is_relevant` is `Some`, uses sparse traversal (only processes relevant nodes).
+/// If `is_relevant` is `None`, uses full traversal (backward compatible).
 pub(crate) fn unifrac_pair_weighted(
     post: &[usize],
     kids: &[Vec<usize>],
@@ -771,7 +829,9 @@ pub(crate) fn unifrac_pair_weighted(
     leaf_ids: &[usize],
     va: &[f32],
     vb: &[f32],
+    is_relevant: Option<&[bool]>,
 ) -> f64 {
+    // Normalize samples (same as before)
     let sum_a: f32 = va.iter().sum();
     let normalized_a: Vec<f32> = if sum_a > 0.0 {
         let inv_a = 1.0 / sum_a;
@@ -779,6 +839,7 @@ pub(crate) fn unifrac_pair_weighted(
     } else {
         vec![0.0; va.len()]
     };
+    
     let sum_b: f32 = vb.iter().sum();
     let normalized_b: Vec<f32> = if sum_b > 0.0 {
         let inv_b = 1.0 / sum_b;
@@ -786,11 +847,24 @@ pub(crate) fn unifrac_pair_weighted(
     } else {
         vec![0.0; vb.len()]
     };
-
+    
+    // Determine which nodes to process
+    let nodes_to_process = if let Some(relevant) = is_relevant {
+        build_sparse_postorder(post, relevant)
+    } else {
+        post.to_vec()
+    };
+    
     let num_nodes = lens.len();
     let mut partial_sums = vec![0.0; num_nodes];
-
+    
+    // Initialize partial sums (only for relevant leaves if sparse)
     for (i, &leaf_id) in leaf_ids.iter().enumerate() {
+        if let Some(relevant) = is_relevant {
+            if leaf_id >= relevant.len() || !relevant[leaf_id] {
+                continue; // Skip non-relevant leaves
+            }
+        }
         if i < normalized_a.len() && i < normalized_b.len() {
             let diff = normalized_a[i] - normalized_b[i];
             if diff.abs() > 1e-12 {
@@ -798,25 +872,33 @@ pub(crate) fn unifrac_pair_weighted(
             }
         }
     }
-    for &v in post {
+    
+    // Propagate partial sums (only for nodes in nodes_to_process)
+    for &v in &nodes_to_process {
         for &c in &kids[v] {
+            if let Some(relevant) = is_relevant {
+                if c >= relevant.len() || !relevant[c] {
+                    continue; // Skip non-relevant children
+                }
+            }
             partial_sums[v] += partial_sums[c];
         }
     }
-
+    
+    // Calculate distance (only for nodes in nodes_to_process)
     let mut distance = 0.0f64;
     let mut total_length = 0.0f64;
-
-    for &node_id in post {
+    
+    for &node_id in &nodes_to_process {
         let diff = partial_sums[node_id] as f64;
         let branch_len = lens[node_id] as f64;
-
+        
         if branch_len > 0.0 {
             distance += diff.abs() * branch_len;
             total_length += branch_len;
         }
     }
-
+    
     if total_length > 0.0 {
         distance / total_length
     } else {
