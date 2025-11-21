@@ -10,8 +10,13 @@
 - ✅ **Ticket 2**: Implement Relevant Leaf Identification - **COMPLETED** (Commit: 9a01e14)
 - ✅ **Ticket 3**: Implement Ancestor Marking - **COMPLETED** (Commit: 13364a9)
 - ✅ **Ticket 4**: Build Sparse Postorder - **COMPLETED**
-- ⏳ **Ticket 5**: Implement Sparse Unweighted UniFrac - **READY** (depends on Tickets 2-4)
-- ⏳ **Tickets 6-10**: Pending
+- ✅ **Ticket 5**: Modify unifrac_pair() to Use Sparse Traversal - **COMPLETED** (Commit: d724224)
+- ✅ **Ticket 6**: Modify unifrac_pair_weighted() to Use Sparse Traversal - **COMPLETED** (Commit: d724224)
+- ✅ **Ticket 7**: Integrate Sparse Traversal into Distance Trait - **COMPLETED** (Commit: d724224)
+- ✅ **Ticket 8**: Add Unit Tests for Sparse Traversal - **COMPLETED** (Commit: fe3392c)
+- ✅ **Ticket 10**: Documentation Updates - **COMPLETED**
+- ✅ **Ticket 11**: Code Cleanup and Comment Review - **COMPLETED**
+- ⏳ **Ticket 9**: Performance Benchmarking - **PENDING**
 
 ---
 
@@ -906,23 +911,41 @@ Update documentation to reflect sparse traversal optimization.
 ### Updates Needed
 
 1. **Code Comments**:
-   - [ ] Document sparse traversal functions
-   - [ ] Explain bottom-up approach
-   - [ ] Add performance notes
+   - [x] Document sparse traversal functions - Added comprehensive doc comments
+   - [x] Explain bottom-up approach - Documented in eval() and mark_relevant_ancestors()
+   - [x] Add performance notes - Added performance characteristics section
 
 2. **README.md**:
-   - [ ] Document sparse traversal optimization
-   - [ ] Explain when it's beneficial
-   - [ ] Add performance characteristics
+   - [x] Document sparse traversal optimization - Added section to README
+   - [x] Explain when it's beneficial - Documented in README
+   - [x] Add performance characteristics - Added performance section
 
 3. **NewDistUniFrac_TRACE.md**:
-   - [ ] Update with sparse traversal details
-   - [ ] Explain optimization strategy
+   - [ ] Update with sparse traversal details - Skipped (not a priority per ticket)
+   - [ ] Explain optimization strategy - Skipped (not a priority per ticket)
 
 ### Acceptance Criteria
-- [ ] All new functions documented
-- [ ] Performance characteristics documented
-- [ ] Usage examples provided
+- [x] All new functions documented - All sparse traversal functions have comprehensive doc comments
+- [x] Performance characteristics documented - Added to README and function docs
+- [x] Usage examples provided - Usage is transparent (no API changes)
+
+### Completion Notes
+
+**Status**: ✅ **COMPLETED**
+
+**Documentation Added**:
+1. Comprehensive doc comments for `eval()` method explaining sparse traversal strategy
+2. Detailed documentation for `identify_relevant_leaves()` and `identify_relevant_leaves_weighted()`
+3. Comprehensive documentation for `mark_relevant_ancestors()` with optimization strategy
+4. Detailed documentation for `build_sparse_postorder()` explaining postorder property
+5. Enhanced documentation for `unifrac_pair()` and `unifrac_pair_weighted()` with sparse traversal details
+6. Added section to README.md explaining sparse traversal optimization and performance characteristics
+
+**Changes Made**:
+- Added detailed doc comments to all sparse traversal helper functions
+- Added comprehensive documentation to `eval()` method with performance characteristics
+- Updated README.md with sparse traversal optimization section
+- All documentation includes performance notes and usage information
 
 ---
 
@@ -938,29 +961,51 @@ Clean up dead code attributes, remove temporary comments, and review/update all 
 ### Cleanup Tasks
 
 1. **Remove `#[allow(dead_code)]` Attributes**:
-   - [ ] Remove from `identify_relevant_leaves()` (used in Ticket 7)
-   - [ ] Remove from `identify_relevant_leaves_weighted()` (used in Ticket 7)
-   - [ ] Remove from `mark_relevant_ancestors()` (used in Ticket 7)
-   - [ ] Remove from `build_sparse_postorder()` (used in Tickets 5-6)
-   - [ ] Review other `#[allow(dead_code)]` attributes in file
-   - [ ] Remove any that are no longer needed
+   - [x] Remove from `identify_relevant_leaves()` - Already removed (function is actively used)
+   - [x] Remove from `identify_relevant_leaves_weighted()` - Already removed (function is actively used)
+   - [x] Remove from `mark_relevant_ancestors()` - Already removed (function is actively used)
+   - [x] Remove from `build_sparse_postorder()` - Already removed (function is actively used)
+   - [x] Review other `#[allow(dead_code)]` attributes in file - Reviewed, remaining ones are for legacy DistUniFrac code
+   - [x] Remove any that are no longer needed - All sparse traversal functions are clean
 
 2. **Remove Temporary Comments**:
-   - [ ] Remove "Will be used in Ticket X" comments from helper functions
-   - [ ] Remove any TODO/FIXME comments if addressed
-   - [ ] Clean up any development/debug comments
+   - [x] Remove "Will be used in Ticket X" comments - None found
+   - [x] Remove any TODO/FIXME comments if addressed - None found
+   - [x] Clean up any development/debug comments - Reviewed, debug statements are in dead_code function
 
 3. **Review and Update Comments**:
-   - [ ] Ensure all function doc comments are accurate
-   - [ ] Update comments that reference "full traversal" vs "sparse traversal"
-   - [ ] Ensure comments reflect current implementation
-   - [ ] Add missing documentation for public/internal functions
-   - [ ] Review inline comments for clarity and accuracy
+   - [x] Ensure all function doc comments are accurate - Completed in Ticket 10
+   - [x] Update comments that reference "full traversal" vs "sparse traversal" - Completed in Ticket 10
+   - [x] Ensure comments reflect current implementation - Completed in Ticket 10
+   - [x] Add missing documentation for public/internal functions - Completed in Ticket 10
+   - [x] Review inline comments for clarity and accuracy - Reviewed and updated
 
 4. **Code Organization**:
-   - [ ] Ensure consistent comment style throughout file
-   - [ ] Verify section dividers are appropriate
-   - [ ] Check for any commented-out code that should be removed
+   - [x] Ensure consistent comment style throughout file - Consistent doc comment style applied
+   - [x] Verify section dividers are appropriate - Section dividers are appropriate
+   - [x] Check for any commented-out code that should be removed - No commented-out code found
+
+### Completion Notes
+
+**Status**: ✅ **COMPLETED**
+
+**Cleanup Completed**:
+1. Verified that sparse traversal helper functions no longer have `#[allow(dead_code)]` attributes (they're actively used)
+2. Reviewed all comments - no temporary "Ticket X" comments found
+3. Reviewed all comments - no TODO/FIXME comments found
+4. All function documentation updated in Ticket 10
+5. Comment style is consistent throughout the file
+6. Section dividers are appropriate
+7. No commented-out code blocks found
+
+**Remaining `#[allow(dead_code)]` Attributes**:
+- `DistUniFrac` struct fields (`node_name_map`, `total_tree_length`) - Legacy code, kept for compatibility
+- `extract_leaf_names_from_newick_string()` - May be used elsewhere or kept for reference
+- `unifrac_succparen_normalized()` - Alternative implementation, kept for reference
+- `SuccTrav` struct and methods - May be used elsewhere or kept for reference
+- `collect_children()` - May be used elsewhere or kept for reference
+
+These remaining attributes are for legacy code or alternative implementations and are intentionally kept.
 
 **Note**: Tests currently live in `src/dist/distances.rs`. While refactoring tests to live closer to their implementations may be beneficial, this is **not a priority** for this cleanup ticket.
 
@@ -1003,10 +1048,10 @@ Clean up dead code attributes, remove temporary comments, and review/update all 
 9. Ticket 9: Performance benchmarking
 
 ### Phase 5: Documentation (Ticket 10)
-10. Ticket 10: Documentation updates
+10. ✅ Ticket 10: Documentation updates - **COMPLETED**
 
 ### Phase 6: Cleanup (Ticket 11)
-11. Ticket 11: Code cleanup and comment review
+11. ✅ Ticket 11: Code cleanup and comment review - **COMPLETED**
 
 ---
 
