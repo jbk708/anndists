@@ -295,6 +295,10 @@ pub struct NewDistUniFrac {
     pub lens: Vec<f32>,
     pub leaf_ids: Vec<usize>,
     pub feature_names: Vec<String>,
+    /// Parent mapping: parent[i] = parent node index of node i, or i if root
+    pub parent: Vec<usize>,
+    /// Index of root node (last node in postorder)
+    pub root_idx: usize,
 }
 
 impl NewDistUniFrac {
@@ -368,6 +372,23 @@ impl NewDistUniFrac {
 
         build_succparen_structure(t.root(), &t, &newick_to_index, &mut kids, &mut post);
 
+        // 3.5. Build parent mapping from kids array
+        // Root is the last node in postorder (processed last in postorder traversal)
+        let root_idx = post[post.len() - 1];
+        let mut parent = vec![0; total_nodes];
+        
+        // Build parent mapping: for each node, set parent of its children
+        for (node_idx, children) in kids.iter().enumerate() {
+            for &child_idx in children {
+                if child_idx < total_nodes {
+                    parent[child_idx] = node_idx;
+                }
+            }
+        }
+        
+        // Root is its own parent
+        parent[root_idx] = root_idx;
+
         // 4. Find leaf nodes using original Newick tree (correct approach)
         let mut leaf_ids = Vec::<usize>::new();
         let mut leaf_nm = Vec::<String>::new();
@@ -421,6 +442,8 @@ impl NewDistUniFrac {
             lens,
             leaf_ids: mapped_leaf_ids,
             feature_names,
+            parent,
+            root_idx,
         })
     }
 
