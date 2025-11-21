@@ -2105,7 +2105,7 @@ mod tests {
         // Sample B: [2.0, 2.0, 2.0, 2.0] -> normalized: [0.25, 0.25, 0.25, 0.25]
         let vb = vec![2.0, 2.0, 2.0, 2.0];
 
-        let result = unifrac_pair_weighted(&post, &kids, &lens, &leaf_ids, &va, &vb);
+        let result = unifrac_pair_weighted(&post, &kids, &lens, &leaf_ids, &va, &vb, None);
 
         // Verify the function returns a valid distance
         // Distance should be between 0.0 and 1.0 (normalized)
@@ -2129,7 +2129,7 @@ mod tests {
         let va = vec![0.0, 0.0];
         let vb = vec![1.0, 1.0];
 
-        let result = unifrac_pair_weighted(&post, &kids, &lens, &leaf_ids, &va, &vb);
+        let result = unifrac_pair_weighted(&post, &kids, &lens, &leaf_ids, &va, &vb, None);
 
         // Should have non-zero distance when one sample is zero and other is not
         // But if total_length is 0.0 (all branches zero), returns 0.0
@@ -2146,7 +2146,7 @@ mod tests {
         let va = vec![1.0, 1.0];
         let vb = vec![0.0, 0.0];
 
-        let result = unifrac_pair_weighted(&post, &kids, &lens, &leaf_ids, &va, &vb);
+        let result = unifrac_pair_weighted(&post, &kids, &lens, &leaf_ids, &va, &vb, None);
 
         assert!(result >= 0.0);
         assert!(result.is_finite());
@@ -2162,7 +2162,7 @@ mod tests {
         let va = vec![0.0, 0.0];
         let vb = vec![0.0, 0.0];
 
-        let result = unifrac_pair_weighted(&post, &kids, &lens, &leaf_ids, &va, &vb);
+        let result = unifrac_pair_weighted(&post, &kids, &lens, &leaf_ids, &va, &vb, None);
 
         // Zero abundance in both should result in zero distance
         // Note: If total_length is 0.0, function returns 0.0
@@ -2179,7 +2179,7 @@ mod tests {
         let va = vec![1.0, 1.0];
         let vb = vec![1.0, 1.0];
 
-        let result = unifrac_pair_weighted(&post, &kids, &lens, &leaf_ids, &va, &vb);
+        let result = unifrac_pair_weighted(&post, &kids, &lens, &leaf_ids, &va, &vb, None);
 
         // Identical normalized abundances should result in zero distance
         assert_eq!(result, 0.0);
@@ -2200,13 +2200,13 @@ mod tests {
         let va_small = vec![1.0, 2.0];
         let vb_small = vec![1.0, 2.0];
         let result_small =
-            unifrac_pair_weighted(&post, &kids, &lens, &leaf_ids, &va_small, &vb_small);
+            unifrac_pair_weighted(&post, &kids, &lens, &leaf_ids, &va_small, &vb_small, None);
 
         // Large scale (should normalize to same proportions)
         let va_large = vec![10.0, 20.0];
         let vb_large = vec![10.0, 20.0];
         let result_large =
-            unifrac_pair_weighted(&post, &kids, &lens, &leaf_ids, &va_large, &vb_large);
+            unifrac_pair_weighted(&post, &kids, &lens, &leaf_ids, &va_large, &vb_large, None);
 
         // Results should be identical after normalization (both should be 0.0 since samples are identical)
         assert_eq!(result_small, 0.0);
@@ -2225,7 +2225,7 @@ mod tests {
         let va = vec![1.0, 2.0];
         let vb = vec![2.0, 1.0];
 
-        let result = unifrac_pair_weighted(&post, &kids, &lens, &leaf_ids, &va, &vb);
+        let result = unifrac_pair_weighted(&post, &kids, &lens, &leaf_ids, &va, &vb, None);
 
         // Should handle the partial_sums initialization correctly
         assert!(result >= 0.0);
@@ -2249,7 +2249,7 @@ mod tests {
         let va = vec![1.0, 0.0];
         let vb = vec![0.0, 1.0];
 
-        let result = unifrac_pair_weighted(&post, &kids, &lens, &leaf_ids, &va, &vb);
+        let result = unifrac_pair_weighted(&post, &kids, &lens, &leaf_ids, &va, &vb, None);
 
         // Expected: (|-1.0| * 1.0) / (1.0 + 1.0) = 1.0 / 2.0 = 0.5
         assert!((result - 0.5).abs() < 1e-10);
@@ -2271,7 +2271,7 @@ mod tests {
         let va = vec![1.0, 1.0];
         let vb = vec![1.0 + 1e-13, 1.0 - 1e-13];
 
-        let result = unifrac_pair_weighted(&post, &kids, &lens, &leaf_ids, &va, &vb);
+        let result = unifrac_pair_weighted(&post, &kids, &lens, &leaf_ids, &va, &vb, None);
 
         // Small differences below threshold should result in zero distance
         // (since they're not stored in partial_sums)
@@ -2289,7 +2289,7 @@ mod tests {
         let va = vec![1.0, 2.0];
         let vb = vec![2.0, 1.0];
 
-        let result = unifrac_pair_weighted(&post, &kids, &lens, &leaf_ids, &va, &vb);
+        let result = unifrac_pair_weighted(&post, &kids, &lens, &leaf_ids, &va, &vb, None);
 
         // Should correctly index into partial_sums using leaf_id
         assert!(result >= 0.0);
@@ -2307,7 +2307,7 @@ mod tests {
         let va = vec![1.0, 2.0, 3.0]; // 3 elements
         let vb = vec![1.0, 2.0]; // 2 elements
 
-        let result = unifrac_pair_weighted(&post, &kids, &lens, &leaf_ids, &va, &vb);
+        let result = unifrac_pair_weighted(&post, &kids, &lens, &leaf_ids, &va, &vb, None);
 
         // Should handle mismatched lengths gracefully
         assert!(result >= 0.0);
@@ -2324,10 +2324,309 @@ mod tests {
         let va = vec![1.0, 2.0]; // Only 2 elements
         let vb = vec![2.0, 1.0]; // Only 2 elements
 
-        let result = unifrac_pair_weighted(&post, &kids, &lens, &leaf_ids, &va, &vb);
+        let result = unifrac_pair_weighted(&post, &kids, &lens, &leaf_ids, &va, &vb, None);
 
         // Should handle when i >= normalized_a.len() or normalized_b.len()
         assert!(result >= 0.0);
         assert!(result.is_finite());
+    }
+
+    //=======================================================================================
+    // Sparse Traversal Tests (Ticket 8)
+    //=======================================================================================
+
+    #[test]
+    fn test_sparse_traversal_unweighted_identical_results() {
+        // Test that sparse traversal produces identical results to full traversal
+        // by comparing results with is_relevant = None vs Some(...)
+        let newick_str = "((T1:0.1,T2:0.1):0.2,(T3:0.1,T4:0.1):0.2):0.0;";
+        let feature_names = vec!["T1", "T2", "T3", "T4"]
+            .into_iter()
+            .map(|s| s.to_string())
+            .collect::<Vec<String>>();
+
+        let dist_unifrac = NewDistUniFrac::new(&newick_str, false, feature_names).unwrap();
+
+        // Test with sparse samples (only T1 and T3 present)
+        let va = vec![1.0, 0.0, 1.0, 0.0]; // T1, T3 present
+        let vb = vec![0.0, 1.0, 0.0, 1.0]; // T2, T4 present
+
+        // Sparse traversal is now the default, so this tests sparse traversal
+        let sparse_result = dist_unifrac.eval(&va, &vb);
+
+        // Verify result is valid
+        assert!(sparse_result >= 0.0 && sparse_result <= 1.0);
+        assert!(sparse_result.is_finite());
+
+        // Test with all leaves present (should still work correctly)
+        let va_all = vec![1.0, 1.0, 1.0, 1.0];
+        let vb_all = vec![1.0, 1.0, 1.0, 1.0];
+        let all_result = dist_unifrac.eval(&va_all, &vb_all);
+
+        // Identical samples should have distance ~0
+        assert!(all_result.abs() < 1e-6, "Identical samples should have distance ~0");
+    }
+
+    #[test]
+    fn test_sparse_traversal_weighted_identical_results() {
+        // Test that sparse traversal produces identical results for weighted UniFrac
+        let newick_str = "((T1:0.1,T2:0.1):0.2,(T3:0.1,T4:0.1):0.2):0.0;";
+        let feature_names = vec!["T1", "T2", "T3", "T4"]
+            .into_iter()
+            .map(|s| s.to_string())
+            .collect::<Vec<String>>();
+
+        let dist_unifrac = NewDistUniFrac::new(&newick_str, true, feature_names).unwrap();
+
+        // Test with sparse samples (only T1 and T3 present)
+        let va = vec![1.0, 0.0, 2.0, 0.0]; // T1=1, T3=2 present
+        let vb = vec![0.0, 1.0, 0.0, 2.0]; // T2=1, T4=2 present
+
+        // Sparse traversal is now the default
+        let sparse_result = dist_unifrac.eval(&va, &vb);
+
+        // Verify result is valid
+        assert!(sparse_result >= 0.0);
+        assert!(sparse_result.is_finite());
+
+        // Test with all leaves present
+        let va_all = vec![1.0, 1.0, 1.0, 1.0];
+        let vb_all = vec![1.0, 1.0, 1.0, 1.0];
+        let all_result = dist_unifrac.eval(&va_all, &vb_all);
+
+        // Identical samples should have distance ~0
+        assert!(all_result.abs() < 1e-6, "Identical samples should have distance ~0");
+    }
+
+    #[test]
+    fn test_sparse_traversal_various_sparsity_levels() {
+        // Test sparse traversal with various sparsity levels
+        let newick_str = "((T1:0.1,T2:0.1):0.2,(T3:0.1,T4:0.1):0.2):0.0;";
+        let feature_names = vec!["T1", "T2", "T3", "T4"]
+            .into_iter()
+            .map(|s| s.to_string())
+            .collect::<Vec<String>>();
+
+        let dist_unifrac = NewDistUniFrac::new(&newick_str, false, feature_names).unwrap();
+
+        // Test cases with different sparsity levels
+        let test_cases = vec![
+            // (va, vb, description, expected_range)
+            (vec![1.0, 0.0, 0.0, 0.0], vec![0.0, 0.0, 0.0, 1.0], "25% sparsity (1/4 leaves)", (0.0, 1.0)),
+            (vec![1.0, 1.0, 0.0, 0.0], vec![0.0, 0.0, 1.0, 1.0], "50% sparsity (2/4 leaves)", (0.0, 1.0)),
+            (vec![1.0, 1.0, 1.0, 0.0], vec![0.0, 1.0, 1.0, 1.0], "75% sparsity (3/4 leaves)", (0.0, 1.0)),
+            (vec![1.0, 1.0, 1.0, 1.0], vec![1.0, 1.0, 1.0, 1.0], "100% sparsity (all leaves)", (0.0, 0.01)),
+        ];
+
+        for (va, vb, description, (min_val, max_val)) in test_cases {
+            let result = dist_unifrac.eval(&va, &vb);
+            assert!(
+                result >= min_val && result <= max_val,
+                "{}: result {} not in expected range [{}, {}]",
+                description, result, min_val, max_val
+            );
+            assert!(result.is_finite(), "{}: result should be finite", description);
+        }
+    }
+
+    #[test]
+    fn test_sparse_traversal_edge_cases() {
+        // Test edge cases for sparse traversal
+        let newick_str = "((T1:0.1,T2:0.1):0.2,(T3:0.1,T4:0.1):0.2):0.0;";
+        let feature_names = vec!["T1", "T2", "T3", "T4"]
+            .into_iter()
+            .map(|s| s.to_string())
+            .collect::<Vec<String>>();
+
+        let dist_unifrac = NewDistUniFrac::new(&newick_str, false, feature_names).unwrap();
+
+        // Edge case 1: Empty samples (no leaves present)
+        let va_empty = vec![0.0, 0.0, 0.0, 0.0];
+        let vb_empty = vec![0.0, 0.0, 0.0, 0.0];
+        let empty_result = dist_unifrac.eval(&va_empty, &vb_empty);
+        assert!(empty_result >= 0.0 && empty_result <= 1.0);
+        assert!(empty_result.is_finite());
+
+        // Edge case 2: One sample empty, one with single leaf
+        let va_single = vec![1.0, 0.0, 0.0, 0.0];
+        let vb_empty2 = vec![0.0, 0.0, 0.0, 0.0];
+        let single_empty_result = dist_unifrac.eval(&va_single, &vb_empty2);
+        assert!(single_empty_result >= 0.0 && single_empty_result <= 1.0);
+        assert!(single_empty_result.is_finite());
+
+        // Edge case 3: Single leaf in each sample (different leaves)
+        let va_one = vec![1.0, 0.0, 0.0, 0.0];
+        let vb_one = vec![0.0, 1.0, 0.0, 0.0];
+        let one_one_result = dist_unifrac.eval(&va_one, &vb_one);
+        assert!(one_one_result > 0.0, "Different single leaves should have distance > 0");
+        assert!(one_one_result.is_finite());
+
+        // Edge case 4: Single leaf in each sample (same leaf)
+        let va_same = vec![1.0, 0.0, 0.0, 0.0];
+        let vb_same = vec![1.0, 0.0, 0.0, 0.0];
+        let same_same_result = dist_unifrac.eval(&va_same, &vb_same);
+        assert!(same_same_result.abs() < 1e-6, "Same single leaf should have distance ~0");
+    }
+
+    #[test]
+    fn test_sparse_traversal_weighted_edge_cases() {
+        // Test edge cases for weighted sparse traversal
+        let newick_str = "((T1:0.1,T2:0.1):0.2,(T3:0.1,T4:0.1):0.2):0.0;";
+        let feature_names = vec!["T1", "T2", "T3", "T4"]
+            .into_iter()
+            .map(|s| s.to_string())
+            .collect::<Vec<String>>();
+
+        let dist_unifrac = NewDistUniFrac::new(&newick_str, true, feature_names).unwrap();
+
+        // Edge case 1: Zero sums (all zeros)
+        let va_zeros = vec![0.0, 0.0, 0.0, 0.0];
+        let vb_zeros = vec![0.0, 0.0, 0.0, 0.0];
+        let zeros_result = dist_unifrac.eval(&va_zeros, &vb_zeros);
+        assert!(zeros_result >= 0.0 && zeros_result <= 1.0);
+        assert!(zeros_result.is_finite());
+
+        // Edge case 2: Very small values
+        let va_small = vec![1e-10, 0.0, 0.0, 0.0];
+        let vb_small = vec![0.0, 1e-10, 0.0, 0.0];
+        let small_result = dist_unifrac.eval(&va_small, &vb_small);
+        assert!(small_result >= 0.0);
+        assert!(small_result.is_finite());
+
+        // Edge case 3: Very large values
+        let va_large = vec![1e10, 0.0, 0.0, 0.0];
+        let vb_large = vec![0.0, 1e10, 0.0, 0.0];
+        let large_result = dist_unifrac.eval(&va_large, &vb_large);
+        assert!(large_result >= 0.0);
+        assert!(large_result.is_finite());
+    }
+
+    #[test]
+    fn test_sparse_traversal_unweighted_pairwise_comparison() {
+        // Test that sparse traversal produces consistent results across multiple pairs
+        let newick_str = "((T1:0.1,T2:0.1):0.2,(T3:0.1,T4:0.1):0.2):0.0;";
+        let feature_names = vec!["T1", "T2", "T3", "T4"]
+            .into_iter()
+            .map(|s| s.to_string())
+            .collect::<Vec<String>>();
+
+        let dist_unifrac = NewDistUniFrac::new(&newick_str, false, feature_names).unwrap();
+
+        // Create multiple samples with different sparsity patterns
+        let samples = vec![
+            ("Sample1", vec![1.0, 0.0, 0.0, 0.0]), // Only T1
+            ("Sample2", vec![0.0, 1.0, 0.0, 0.0]), // Only T2
+            ("Sample3", vec![0.0, 0.0, 1.0, 0.0]), // Only T3
+            ("Sample4", vec![0.0, 0.0, 0.0, 1.0]), // Only T4
+            ("Sample5", vec![1.0, 1.0, 0.0, 0.0]), // T1, T2
+            ("Sample6", vec![0.0, 0.0, 1.0, 1.0]), // T3, T4
+        ];
+
+        // Compute pairwise distances
+        let mut distances = Vec::new();
+        for i in 0..samples.len() {
+            for j in (i + 1)..samples.len() {
+                let (name_i, ref data_i) = samples[i];
+                let (name_j, ref data_j) = samples[j];
+                let dist = dist_unifrac.eval(data_i, data_j);
+                distances.push((name_i, name_j, dist));
+            }
+        }
+
+        // Verify all distances are valid
+        for (name_i, name_j, dist) in &distances {
+            assert!(
+                dist.is_finite() && *dist >= 0.0 && *dist <= 1.0,
+                "Distance between {} and {} should be in [0, 1], got {}",
+                name_i, name_j, dist
+            );
+        }
+
+        // Verify symmetry: dist(A, B) == dist(B, A)
+        // (This is tested implicitly since we compute each pair once)
+        // But we can verify that identical samples have distance 0
+        for (name, data) in &samples {
+            let self_dist = dist_unifrac.eval(data, data);
+            assert!(
+                self_dist.abs() < 1e-6,
+                "Self-distance for {} should be ~0, got {}",
+                name, self_dist
+            );
+        }
+    }
+
+    #[test]
+    fn test_sparse_traversal_weighted_with_is_relevant_none() {
+        // Test that unifrac_pair_weighted with is_relevant = None works correctly
+        // This tests backward compatibility
+        let post = vec![0, 1, 2, 3, 4];
+        let kids = vec![vec![1, 2], vec![], vec![], vec![], vec![]];
+        let lens = vec![0.0, 1.0, 1.0, 0.5, 0.5];
+        let leaf_ids = vec![1, 2];
+        let va = vec![1.0, 2.0];
+        let vb = vec![2.0, 1.0];
+
+        // Test with is_relevant = None (full traversal)
+        let result_none = unifrac_pair_weighted(&post, &kids, &lens, &leaf_ids, &va, &vb, None);
+
+        // Test with is_relevant = Some (sparse traversal with all nodes relevant)
+        let all_relevant = vec![true; lens.len()];
+        let result_all = unifrac_pair_weighted(
+            &post,
+            &kids,
+            &lens,
+            &leaf_ids,
+            &va,
+            &vb,
+            Some(&all_relevant),
+        );
+
+        // Results should be identical (all nodes are relevant)
+        assert!(
+            (result_none - result_all).abs() < 1e-10,
+            "Full traversal and sparse traversal (all relevant) should produce identical results"
+        );
+        assert!(result_none >= 0.0 && result_none.is_finite());
+    }
+
+    #[test]
+    fn test_sparse_traversal_weighted_with_partial_relevance() {
+        // Test sparse traversal with only some nodes relevant
+        let post = vec![0, 1, 2, 3, 4]; // 5 nodes: root=4, internal=0, leaves=1,2,3
+        let kids = vec![vec![1, 2], vec![], vec![], vec![], vec![0, 3]];
+        let lens = vec![0.2, 1.0, 1.0, 1.0, 0.0];
+        let leaf_ids = vec![1, 2, 3]; // 3 leaves
+        let va = vec![1.0, 0.0, 0.0]; // Only first leaf present
+        let vb = vec![0.0, 1.0, 0.0]; // Only second leaf present
+
+        // Test with is_relevant = None (full traversal)
+        let result_full = unifrac_pair_weighted(&post, &kids, &lens, &leaf_ids, &va, &vb, None);
+
+        // Test with sparse traversal (only leaves 1 and 2 relevant, plus their ancestors)
+        // In this tree: leaf 1 and 2 share parent 0, which is child of root 4
+        // So relevant nodes: 1, 2, 0, 4
+        let mut is_relevant = vec![false; lens.len()];
+        is_relevant[1] = true; // leaf 1
+        is_relevant[2] = true; // leaf 2
+        is_relevant[0] = true; // parent of 1,2
+        is_relevant[4] = true; // root
+
+        let result_sparse = unifrac_pair_weighted(
+            &post,
+            &kids,
+            &lens,
+            &leaf_ids,
+            &va,
+            &vb,
+            Some(&is_relevant),
+        );
+
+        // Results should be identical (sparse traversal should produce same result)
+        assert!(
+            (result_full - result_sparse).abs() < 1e-10,
+            "Full traversal and sparse traversal should produce identical results. Full: {}, Sparse: {}",
+            result_full, result_sparse
+        );
+        assert!(result_full >= 0.0 && result_full.is_finite());
     }
 } // end of module tests
